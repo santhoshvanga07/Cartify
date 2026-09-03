@@ -1,0 +1,117 @@
+import mongoose from 'mongoose';
+
+/**
+ * A SNAPSHOT of the product at the moment of purchase.
+ *
+ * We keep the ref for linking, but we also COPY name, brand, price and image.
+ * If an admin later changes the price or deletes the product, this order and
+ * its invoice must still show what the customer actually paid. Storing only a
+ * ref would silently rewrite every historical invoice.
+ */
+const orderItemSchema = new mongoose.Schema(
+  {
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    name: { type: String, required: true },
+    slug: { type: String, required: true },
+    brand: { type: String, required: true },
+    image: { type: String, default: '' },
+    price: { type: Number, required: true }, // price AT PURCHASE TIME
+    quantity: { type: Number, required: true, min: 1 },
+  },
+  { _id: false }
+);
+
+const addressSchema = new mongoose.Schema(
+  {
+    fullName: { type: String, required: true, trim: true },
+    phone: { type: String, required: true, trim: true },
+    line1: { type: String, required: true, trim: true },
+    line2: { type: String, trim: true, default: '' },
+    city: { type: String, required: true, trim: true },
+    state: { type: String, required: true, trim: true },
+    pincode: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
+export const ORDER_STATUSES = [
+  'placed',
+  'confirmed',
+  'shipped',
+  'delivered',
+  'cancelled',
+  'return_requested',
+  'returned',
+];
+
+/** Which transitions an admin is allowed to make. Prevents delivered -> placed. */
+export const ALLOWED_TRANSITIONS = {
+  placed: ['confirmed', 'cancelled'],
+  confirmed: ['shipped', 'cancelled'],
+  shipped: ['delivered'],
+  delivered: ['return_requested'],
+  return_requested: ['returned', 'delivered'],
+  returned: [],
+  cancelled: [],
+};
+
+const orderSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+
+    // Human-readable reference. Nobody wants to read an ObjectId over the phone.
+    orderNumber: { type: String, unique: true, index: true },
+
+    items: { type: [orderItemSchema], required: true },
+    shippingAddress: { type: addressSchema, required: true },
+
+    // Recomputed on the server at checkout - never taken from the client.
+    pricing: {
+      subtotal: { type: Number, required: true },
+      discount: { type: Number, default: 0 },
+      gst: { type: Number, required: true },
+      shipping: { type: Number, required: true },
+      total: { type: Number, required: true },
+    },
+
+    paymentMethod: { type: String, enum: ['cod', 'razorpay'], required: true },
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'paid', 'failed', 'refunded'],
+      default: 'pending',
+    },
+    paymentDetails: {
+      razorpayOrderId: String,
+      razorpayPaymentId: String,
+      razorpaySignature: String,
+      paidAt: Date,
+    },
+
+    status: { type: String, enum: ORDER_STATUSES, default: 'placed', index: true },
+
+    // An audit trail - who changed what, when. Needed for the admin activity log.
+    statusHistory: [
+      {
+        status: { type: String, enum: ORDER_STATUSES },
+        at: { type: Date, default: Date.now },
+        note: String,
+        _id: false,
+      },
+    ],
+  },
+  { timestamps: true }
+);
+
+/* Generate a readable order number: CFY-250820-0417 */
+orderSchema.pre('save', async function () {
+  if (this.orderNumber) return;
+  const d = this.createdAt || new Date();
+  const stamp =
+    String(d.getFullYear()).slice(2) +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    String(d.getDate()).padStart(2, '0');
+  const random = Math.floor(1000 + Math.random() * 9000);
+  this.orderNumber = `CFY-${stamp}-${random}`;
+});
+
+export default mongoose.model('Order', orderSchema);
