@@ -16,6 +16,7 @@ const AdminLayout = () => {
     { to: '/admin/products', label: 'Products' },
     { to: '/admin/categories', label: 'Categories' },
     { to: '/admin/coupons', label: 'Coupons' },
+    { to: '/admin/moderation', label: 'Moderation' },
     ...(isSuper ? [{ to: '/admin/users', label: 'Users & admins' }] : []),
   ];
 

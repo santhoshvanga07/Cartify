@@ -30,6 +30,7 @@ import AdminProducts from './pages/admin/AdminProducts';
 import AdminCategories from './pages/admin/AdminCategories';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminCoupons from './pages/admin/AdminCoupons';
+import AdminModeration from './pages/admin/AdminModeration';
 
 function App() {
   const dispatch = useDispatch();
@@ -86,6 +87,7 @@ function App() {
             <Route path="products" element={<AdminProducts />} />
             <Route path="categories" element={<AdminCategories />} />
             <Route path="coupons" element={<AdminCoupons />} />
+            <Route path="moderation" element={<AdminModeration />} />
           </Route>
         </Route>
 

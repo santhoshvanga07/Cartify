@@ -16,6 +16,7 @@ import reviewRoutes from './routes/review.routes.js';
 import wishlistRoutes from './routes/wishlist.routes.js';
 import couponRoutes from './routes/coupon.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
+import questionRoutes from './routes/question.routes.js';
 import { notFound, errorHandler } from './middleware/error.middleware.js';
 import { apiLimiter } from './middleware/rateLimit.middleware.js';
 
@@ -58,6 +59,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/questions', questionRoutes);
 
 /* ---------- Error handling (must be LAST) ---------- */
 

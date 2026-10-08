@@ -6,6 +6,7 @@ import { protect, authorize, optionalAuth } from '../middleware/auth.middleware.
 import { uploadSingleImage } from '../middleware/upload.middleware.js';
 import { uploadProductImage, deleteProductImage } from '../controllers/upload.controller.js';
 import { listReviews, createReview } from '../controllers/review.controller.js';
+import { listQuestions, askQuestion } from '../controllers/question.controller.js';
 
 const router = Router();
 const adminOnly = [protect, authorize('admin', 'superadmin')];
@@ -17,6 +18,10 @@ router.get('/:slug', getProductBySlug);          // public
 // signed-in visitors also learn which review is theirs.
 router.get('/:slug/reviews', optionalAuth, listReviews);
 router.post('/:slug/reviews', protect, createReview);
+
+// Community Q&A, same pattern as reviews.
+router.get('/:slug/questions', optionalAuth, listQuestions);
+router.post('/:slug/questions', protect, askQuestion);
 router.post('/', adminOnly, createProduct);
 router.put('/:id', adminOnly, updateProduct);
 router.delete('/:id', adminOnly, deleteProduct);

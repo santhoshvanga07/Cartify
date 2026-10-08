@@ -19,7 +19,8 @@
     "seed:upload-images": "node seed/uploadImages.js",
     "test:wishlist-coupons": "node _wishlistcoupontest.mjs",
     "test:payments": "node _paymenttest.mjs",
-    "test:account": "node _accounttest.mjs"
+    "test:account": "node _accounttest.mjs",
+    "test:qa": "node _qatest.mjs"
   },
   "keywords": [
     "ecommerce",

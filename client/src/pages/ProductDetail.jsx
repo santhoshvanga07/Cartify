@@ -8,6 +8,7 @@ import { inr } from '../components/ProductCard';
 import Recommendations from '../components/Recommendations';
 import Reviews from '../components/Reviews';
 import WishlistButton from '../components/WishlistButton';
+import Questions from '../components/Questions';
 
 const ProductDetail = () => {
   const { slug } = useParams();
@@ -136,6 +137,8 @@ const ProductDetail = () => {
       )}
 
       <Reviews slug={product.slug} />
+
+      <Questions slug={product.slug} />
 
       <Recommendations slug={product.slug} />
     </div>
