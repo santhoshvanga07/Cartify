@@ -21,7 +21,8 @@
     "test:payments": "node _paymenttest.mjs",
     "test:account": "node _accounttest.mjs",
     "test:qa": "node _qatest.mjs",
-    "test:customers": "node _customertest.mjs"
+    "test:customers": "node _customertest.mjs",
+    "test:admin-tools": "node _admintoolstest.mjs"
   },
   "keywords": [
     "ecommerce",

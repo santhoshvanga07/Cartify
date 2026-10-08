@@ -32,6 +32,9 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminCoupons from './pages/admin/AdminCoupons';
 import AdminModeration from './pages/admin/AdminModeration';
 import AdminCustomers from './pages/admin/AdminCustomers';
+import AdminReports from './pages/admin/AdminReports';
+import AdminSettings from './pages/admin/AdminSettings';
+import AdminActivity from './pages/admin/AdminActivity';
 
 function App() {
   const dispatch = useDispatch();
@@ -90,6 +93,7 @@ function App() {
             <Route path="coupons" element={<AdminCoupons />} />
             <Route path="moderation" element={<AdminModeration />} />
             <Route path="customers" element={<AdminCustomers />} />
+            <Route path="reports" element={<AdminReports />} />
           </Route>
         </Route>
 
@@ -97,6 +101,12 @@ function App() {
         <Route element={<ProtectedRoute roles={['superadmin']} />}>
           <Route path="/admin/users" element={<AdminLayout />}>
             <Route index element={<AdminUsers />} />
+          </Route>
+          <Route path="/admin/settings" element={<AdminLayout />}>
+            <Route index element={<AdminSettings />} />
+          </Route>
+          <Route path="/admin/activity" element={<AdminLayout />}>
+            <Route index element={<AdminActivity />} />
           </Route>
         </Route>
       </Routes>

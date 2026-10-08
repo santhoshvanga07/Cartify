@@ -5,13 +5,11 @@ import { toast } from 'react-toastify';
 import { fetchOrder, cancelOrder, requestReturn, verifyPayment } from '../features/orders/orderSlice';
 import { openRazorpay } from '../utils/razorpay';
 import api from '../api/axios';
+import { useSettings } from '../utils/settings';
 import { inr } from '../components/ProductCard';
 import { STATUS_LABEL, statusClass } from './Orders';
 
 const TRACK = ['placed', 'confirmed', 'shipped', 'delivered'];
-
-// Must match RETURN_WINDOW_DAYS on the server, which is what actually decides.
-const RETURN_WINDOW_DAYS = 7;
 
 const OrderDetail = () => {
   const { id } = useParams();
@@ -21,6 +19,8 @@ const OrderDetail = () => {
   const [returning, setReturning] = useState(false);
   const [reason, setReason] = useState('');
   const [paying, setPaying] = useState(false);
+  // The server decides; this only hides a button that would be refused.
+  const { returnWindowDays } = useSettings();
   // Read the clock once per visit; render must not call Date.now() directly.
   const [now] = useState(() => Date.now());
 
@@ -52,7 +52,7 @@ const OrderDetail = () => {
   const returnOpen =
     order.status === 'delivered' &&
     deliveredAt &&
-    now < new Date(deliveredAt).getTime() + RETURN_WINDOW_DAYS * 86400000;
+    now < new Date(deliveredAt).getTime() + returnWindowDays * 86400000;
   const awaitingPayment =
     order.paymentMethod === 'razorpay' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunded'
     && order.status !== 'cancelled';
@@ -247,7 +247,7 @@ const OrderDetail = () => {
             className="field"
           />
           <p className="mt-2 text-xs text-muted">
-            Returns are accepted within {RETURN_WINDOW_DAYS} days of delivery. Refunds go back to your
+            Returns are accepted within {returnWindowDays} days of delivery. Refunds go back to your
             original payment method once we receive the item.
           </p>
           <div className="mt-4 flex gap-2">

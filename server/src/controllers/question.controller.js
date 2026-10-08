@@ -1,6 +1,7 @@
 import Question from '../models/Question.js';
 import Product from '../models/Product.js';
 import Order from '../models/Order.js';
+import { logActivity } from '../services/activity.service.js';
 
 const isStaff = (user) => ['admin', 'superadmin'].includes(user?.role);
 const has = (ids, user) => Boolean(user) && ids.some((id) => id.equals(user._id));
@@ -148,6 +149,7 @@ export const deleteQuestion = async (req, res) => {
     return res.status(403).json({ success: false, message: 'Not your question' });
   }
   await q.deleteOne();
+  if (!q.user.equals(req.user._id)) logActivity(req, 'question.delete', { type: 'question', id: q._id, label: q.text.slice(0, 60) });
   res.status(200).json({ success: true, message: 'Question deleted' });
 };
 
@@ -180,5 +182,6 @@ export const setVisibility = async (req, res) => {
   q.isHidden = Boolean(req.body.isHidden);
   if (!q.isHidden) q.reports = []; // a human has judged it
   await q.save();
+  logActivity(req, q.isHidden ? 'question.hide' : 'question.restore', { type: 'question', id: q._id, label: q.text.slice(0, 60) });
   res.status(200).json({ success: true, message: q.isHidden ? 'Question hidden' : 'Question restored', question: q });
 };

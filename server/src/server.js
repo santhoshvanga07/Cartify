@@ -1,6 +1,7 @@
 import 'dotenv/config'; // must run BEFORE anything reads process.env
 import app from './app.js';
 import connectDB from './config/db.js';
+import { loadSettings } from './services/settings.service.js';
 import ensureSuperAdmin from './utils/ensureSuperAdmin.js';
 import seedCatalog from './utils/seedCatalog.js';
 import seedOrders from './utils/seedOrders.js';
@@ -12,6 +13,7 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
+  await loadSettings(); // GST, shipping and payment rules for pricing.js
 
   // In development the fallback DB is empty on every restart, so make sure
   // there is always a Super Admin to log in as.

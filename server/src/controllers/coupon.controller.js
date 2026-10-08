@@ -2,6 +2,7 @@ import Coupon from '../models/Coupon.js';
 import Cart from '../models/Cart.js';
 import { calculateTotals } from '../utils/pricing.js';
 import { evaluateCoupon } from '../utils/coupon.js';
+import { logActivity } from '../services/activity.service.js';
 
 // Fields an admin may set. Anything else in the body (usedCount, usedBy) is ignored.
 const EDITABLE = [
@@ -19,6 +20,7 @@ export const listCoupons = async (req, res) => {
 /** @route POST /api/coupons  @access Admin */
 export const createCoupon = async (req, res) => {
   const coupon = await Coupon.create(pick(req.body));
+  logActivity(req, 'coupon.create', { type: 'coupon', id: coupon._id, label: coupon.code });
   res.status(201).json({ success: true, coupon });
 };
 
@@ -29,6 +31,7 @@ export const updateCoupon = async (req, res) => {
 
   Object.assign(coupon, pick(req.body));
   await coupon.save();
+  logActivity(req, 'coupon.update', { type: 'coupon', id: coupon._id, label: coupon.code }, Object.keys(pick(req.body)).join(', '));
   res.status(200).json({ success: true, coupon });
 };
 
@@ -36,6 +39,7 @@ export const updateCoupon = async (req, res) => {
 export const deleteCoupon = async (req, res) => {
   const coupon = await Coupon.findByIdAndDelete(req.params.id);
   if (!coupon) return res.status(404).json({ success: false, message: 'Coupon not found' });
+  logActivity(req, 'coupon.delete', { type: 'coupon', id: coupon._id, label: coupon.code });
   res.status(200).json({ success: true, message: 'Coupon deleted' });
 };
 

@@ -1,17 +1,20 @@
 import Order from '../models/Order.js';
 import { notifyPaymentReceived } from '../services/notification.service.js';
+import { getSettings } from '../services/settings.service.js';
 import {
   isRazorpayConfigured, startPayment, verifyRazorpaySignature,
 } from '../services/payment.service.js';
 
 /** @route GET /api/payments/config  @access Public */
 export const paymentConfig = (req, res) => {
+  const online = isRazorpayConfigured() && getSettings().onlinePaymentEnabled;
   res.status(200).json({
     success: true,
-    razorpay: isRazorpayConfigured(),
+    razorpay: online,
+    cod: getSettings().codEnabled,
     // The key ID is public by design - it goes into the browser's checkout
     // widget. The SECRET never leaves the server.
-    keyId: isRazorpayConfigured() ? process.env.RAZORPAY_KEY_ID : null,
+    keyId: online ? process.env.RAZORPAY_KEY_ID : null,
   });
 };
 

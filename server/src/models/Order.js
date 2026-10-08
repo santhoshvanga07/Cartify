@@ -73,6 +73,9 @@ const orderSchema = new mongoose.Schema(
       gst: { type: Number, required: true },
       shipping: { type: Number, required: true },
       total: { type: Number, required: true },
+      // The rate in force when the order was placed. Orders from before
+      // GST became configurable were all charged 18%.
+      gstRate: { type: Number, default: 18 },
     },
 
     // The coupon as it was applied - a later edit to the coupon must not

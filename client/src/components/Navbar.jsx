@@ -2,6 +2,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { logoutUser } from '../features/auth/authSlice';
+import { useSettings } from '../utils/settings';
 
 const Navbar = () => {
   const { user } = useSelector((state) => state.auth);
@@ -10,6 +11,7 @@ const Navbar = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { storeName } = useSettings();
 
   const handleLogout = async () => {
     await dispatch(logoutUser());
@@ -33,7 +35,7 @@ const Navbar = () => {
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <div className="flex items-center gap-8">
           <Link to="/" className="display text-2xl text-ink">
-            Cartify
+            {storeName}
           </Link>
           {navLink('/products', 'Shop')}
           {navLink('/assistant', 'Assistant')}

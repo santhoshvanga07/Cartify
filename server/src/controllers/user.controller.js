@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Order from '../models/Order.js';
 import { escapeRegex } from '../services/productQuery.service.js';
+import { logActivity } from '../services/activity.service.js';
 
 /**
  * @desc    List users, optionally filtered by role
@@ -29,6 +30,7 @@ export const createAdmin = async (req, res) => {
   }
 
   const admin = await User.create({ name, email, password, role: 'admin' });
+  logActivity(req, 'user.create_admin', { type: 'user', id: admin._id, label: admin.email });
 
   res.status(201).json({
     success: true,
@@ -56,8 +58,10 @@ export const updateUserRole = async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+  const previous = user.role;
   user.role = role;
   await user.save();
+  logActivity(req, 'user.role', { type: 'user', id: user._id, label: user.email }, `${previous} -> ${role}`);
 
   res.status(200).json({ success: true, user: { _id: user._id, email: user.email, role: user.role } });
 };
@@ -152,6 +156,7 @@ export const updateUserStatus = async (req, res) => {
 
   user.isActive = isActive;
   await user.save();
+  logActivity(req, isActive ? 'user.activate' : 'user.suspend', { type: 'user', id: user._id, label: user.email });
 
   res.status(200).json({
     success: true,

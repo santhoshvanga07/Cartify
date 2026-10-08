@@ -19,6 +19,7 @@ const Checkout = () => {
   const [preview, setPreview] = useState(null);
   const [applying, setApplying] = useState(false);
   const [onlineEnabled, setOnlineEnabled] = useState(false);
+  const [codEnabled, setCodEnabled] = useState(true);
   const [paying, setPaying] = useState(false);
 
   const dispatch = useDispatch();
@@ -40,7 +41,12 @@ const Checkout = () => {
   useEffect(() => {
     api
       .get('/payments/config')
-      .then(({ data }) => setOnlineEnabled(data.razorpay))
+      .then(({ data }) => {
+        setOnlineEnabled(data.razorpay);
+        setCodEnabled(data.cod !== false);
+        // If cash on delivery is switched off, start on the method that works.
+        if (data.cod === false && data.razorpay) setPaymentMethod('razorpay');
+      })
       .catch(() => {});
   }, []);
 
@@ -202,17 +208,24 @@ const Checkout = () => {
 
           <h2 className="mt-10 text-sm font-medium text-ink">Payment</h2>
           <div className="mt-4 space-y-3">
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-surface p-4">
+            <label
+              className={`flex items-start gap-3 rounded-xl bg-surface p-4 ${
+                codEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+              }`}
+            >
               <input
                 type="radio"
                 name="pay"
+                disabled={!codEnabled}
                 checked={paymentMethod === 'cod'}
                 onChange={() => setPaymentMethod('cod')}
                 className="mt-1 accent-current text-accent"
               />
               <span>
                 <span className="block text-sm text-ink">Cash on delivery</span>
-                <span className="block text-xs text-body">Pay when your order arrives.</span>
+                <span className="block text-xs text-body">
+                  {codEnabled ? 'Pay when your order arrives.' : 'Currently unavailable.'}
+                </span>
               </span>
             </label>
 
@@ -315,7 +328,7 @@ const Checkout = () => {
                 </div>
               )}
               <div className="flex justify-between">
-                <dt className="text-body">GST (18%)</dt>
+                <dt className="text-body">GST ({shown.gstRate ?? 18}%)</dt>
                 <dd className="text-ink">{inr(shown.gst)}</dd>
               </div>
               <div className="flex justify-between">

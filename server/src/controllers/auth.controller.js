@@ -4,6 +4,7 @@ import sendTokenResponse from '../utils/sendTokenResponse.js';
 import {
   notifyWelcome, notifyPasswordReset, notifyPasswordChanged,
 } from '../services/notification.service.js';
+import { logActivity } from '../services/activity.service.js';
 
 const RESET_MINUTES = 30;
 
@@ -40,13 +41,17 @@ export const login = async (req, res) => {
 
   // Same message whether the email or the password was wrong (see notes)
   if (!user || !(await user.matchPassword(password))) {
+    // Logged with the attempted email, so repeated guessing at one account shows up.
+    logActivity(req, 'auth.login_failed', { type: 'user', id: user?._id, label: email }, '', null);
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 
   if (!user.isActive) {
+    logActivity(req, 'auth.login_blocked', { type: 'user', id: user._id, label: email }, 'Suspended account', null);
     return res.status(403).json({ success: false, message: 'Account suspended' });
   }
 
+  logActivity(req, 'auth.login', { type: 'user', id: user._id, label: email }, '', user);
   sendTokenResponse(user, 200, res);
 };
 
@@ -101,6 +106,7 @@ export const changePassword = async (req, res) => {
   user.password = newPassword;
   await user.save(); // pre-save hashes it and stamps passwordChangedAt
   notifyPasswordChanged(user);
+  logActivity(req, 'auth.password_change', { type: 'user', id: user._id, label: user.email });
 
   // A fresh cookie for THIS device; every other session is now invalid.
   sendTokenResponse(user, 200, res);
@@ -155,6 +161,7 @@ export const resetPassword = async (req, res) => {
   user.resetPasswordExpire = undefined;
   await user.save();
   notifyPasswordChanged(user);
+  logActivity(req, 'auth.password_reset', { type: 'user', id: user._id, label: user.email }, '', user);
 
   sendTokenResponse(user, 200, res);
 };

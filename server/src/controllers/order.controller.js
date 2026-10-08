@@ -3,6 +3,8 @@ import Order, { ALLOWED_TRANSITIONS } from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import { calculateTotals } from '../utils/pricing.js';
+import { getSettings } from '../services/settings.service.js';
+import { logActivity } from '../services/activity.service.js';
 import {
   isRazorpayConfigured, startPayment, refundRazorpayPayment,
 } from '../services/payment.service.js';
@@ -26,8 +28,12 @@ export const createOrder = async (req, res) => {
   if (!['cod', 'razorpay'].includes(paymentMethod)) {
     return res.status(400).json({ success: false, message: 'Invalid payment method' });
   }
-  if (paymentMethod === 'razorpay' && !isRazorpayConfigured()) {
+  const { codEnabled, onlinePaymentEnabled } = getSettings();
+  if (paymentMethod === 'razorpay' && !(isRazorpayConfigured() && onlinePaymentEnabled)) {
     return res.status(400).json({ success: false, message: 'Online payment is not enabled' });
+  }
+  if (paymentMethod === 'cod' && !codEnabled) {
+    return res.status(400).json({ success: false, message: 'Cash on delivery is currently unavailable' });
   }
 
   const required = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode'];
@@ -95,6 +101,7 @@ export const createOrder = async (req, res) => {
         gst: pricing.gst,
         shipping: pricing.shipping,
         total: pricing.total,
+        gstRate: pricing.gstRate,
       },
       ...(coupon && { coupon: { code: coupon.code, discount: pricing.discount, couponId: coupon._id } }),
       paymentMethod,
@@ -138,9 +145,6 @@ export const createOrder = async (req, res) => {
 
   res.status(201).json({ success: true, order, razorpay });
 };
-
-/** Days after delivery during which a customer may ask for a return. */
-export const RETURN_WINDOW_DAYS = 7;
 
 /**
  * Puts stock back and settles the money for an order that is being cancelled
@@ -240,13 +244,14 @@ export const requestReturn = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Tell us briefly why you are returning it' });
   }
 
+  const { returnWindowDays } = getSettings();
   const deliveredAt = order.deliveredAt
     || [...order.statusHistory].reverse().find((h) => h.status === 'delivered')?.at;
-  const windowEnds = new Date(deliveredAt).getTime() + RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const windowEnds = new Date(deliveredAt).getTime() + returnWindowDays * 24 * 60 * 60 * 1000;
   if (!deliveredAt || Date.now() > windowEnds) {
     return res.status(409).json({
       success: false,
-      message: `Returns are accepted within ${RETURN_WINDOW_DAYS} days of delivery`,
+      message: `Returns are accepted within ${returnWindowDays} days of delivery`,
     });
   }
 
@@ -289,6 +294,8 @@ export const updateOrderStatus = async (req, res) => {
   const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
+  const from = order.status;
+
   // A state machine, not a free-for-all: delivered cannot go back to placed.
   const allowed = ALLOWED_TRANSITIONS[order.status] || [];
   if (!allowed.includes(status)) {
@@ -313,6 +320,7 @@ export const updateOrderStatus = async (req, res) => {
   if (status === 'cancelled' || status === 'returned') await releaseOrder(order);
 
   await order.save();
+  logActivity(req, 'order.status', { type: 'order', id: order._id, label: order.orderNumber }, `${from} -> ${status}`);
   if (order.user) notifyStatusChange(order, order.user);
   res.status(200).json({ success: true, order });
 };

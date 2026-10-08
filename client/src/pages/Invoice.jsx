@@ -3,13 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchOrder } from '../features/orders/orderSlice';
 import { inr } from '../components/ProductCard';
-
-const SELLER = {
-  name: 'Cartify Retail Pvt. Ltd.',
-  address: 'Software Engineering Lab, NIT Campus',
-  gstin: '36ABCDE1234F1Z5',
-  email: 'support@cartify.com',
-};
+import { useSettings } from '../utils/settings';
 
 const date = (d) =>
   new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -26,6 +20,8 @@ const Invoice = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const { current: order, error } = useSelector((state) => state.orders);
+  // Seller details are platform settings the Super Admin maintains.
+  const seller = useSettings();
 
   useEffect(() => {
     dispatch(fetchOrder(id));
@@ -37,6 +33,8 @@ const Invoice = () => {
   const a = order.shippingAddress;
   const p = order.pricing;
   const taxable = p.subtotal - (p.discount || 0);
+  // Intra-state GST splits evenly into central and state tax.
+  const halfRate = (p.gstRate ?? 18) / 2;
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10 print:max-w-none print:p-0">
@@ -52,13 +50,18 @@ const Invoice = () => {
       <article className="card print:shadow-none">
         <header className="flex flex-wrap items-start justify-between gap-6 border-b border-line pb-6">
           <div>
-            <p className="display text-3xl text-ink">Cartify</p>
+            <p className="display text-3xl text-ink">{seller.storeName}</p>
             <p className="mt-2 text-xs leading-relaxed text-body">
-              {SELLER.name}
+              {seller.legalName}
+              {seller.address && (
+                <>
+                  <br />
+                  {seller.address}
+                </>
+              )}
               <br />
-              {SELLER.address}
-              <br />
-              GSTIN {SELLER.gstin} · {SELLER.email}
+              {seller.gstin && `GSTIN ${seller.gstin} · `}
+              {seller.supportEmail}
             </p>
           </div>
           <div className="text-right">
@@ -134,11 +137,11 @@ const Invoice = () => {
             <dd className="text-ink">{inr(taxable)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-body">CGST 9%</dt>
+            <dt className="text-body">CGST {halfRate}%</dt>
             <dd className="text-ink">{inr(p.gst / 2)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-body">SGST 9%</dt>
+            <dt className="text-body">SGST {halfRate}%</dt>
             <dd className="text-ink">{inr(p.gst / 2)}</dd>
           </div>
           <div className="flex justify-between">
@@ -152,7 +155,8 @@ const Invoice = () => {
         </dl>
 
         <p className="mt-10 text-center text-xs text-muted">
-          This is a computer-generated invoice and needs no signature. Thank you for shopping with Cartify.
+          This is a computer-generated invoice and needs no signature. Thank you for shopping with{' '}
+          {seller.storeName}.
         </p>
       </article>
     </div>
