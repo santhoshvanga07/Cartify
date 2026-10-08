@@ -16,7 +16,8 @@
     "test:ratelimit": "node _ratelimittest.mjs",
     "seed:images": "node seed/seedProductImages.js",
     "check:cloudinary": "node _checkcloudinary.mjs",
-    "seed:upload-images": "node seed/uploadImages.js"
+    "seed:upload-images": "node seed/uploadImages.js",
+    "test:wishlist-coupons": "node _wishlistcoupontest.mjs"
   },
   "keywords": [
     "ecommerce",

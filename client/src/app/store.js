@@ -4,6 +4,7 @@ import productReducer from '../features/products/productSlice';
 import cartReducer from '../features/cart/cartSlice';
 import orderReducer from '../features/orders/orderSlice';
 import aiReducer from '../features/ai/aiSlice';
+import wishlistReducer from '../features/wishlist/wishlistSlice';
 
 export const store = configureStore({
   reducer: {
@@ -12,6 +13,6 @@ export const store = configureStore({
     cart: cartReducer,        // state.cart
     orders: orderReducer,     // state.orders
     ai: aiReducer,            // state.ai
-    // cart, products, orders will slot in here later
+    wishlist: wishlistReducer, // state.wishlist
   },
 });

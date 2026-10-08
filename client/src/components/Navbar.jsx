@@ -6,6 +6,7 @@ import { logoutUser } from '../features/auth/authSlice';
 const Navbar = () => {
   const { user } = useSelector((state) => state.auth);
   const itemCount = useSelector((state) => state.cart.totals.itemCount);
+  const savedCount = useSelector((state) => state.wishlist.products.length);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -44,6 +45,9 @@ const Navbar = () => {
             <>
               <Link to="/orders" className="text-sm text-body transition-colors hover:text-ink">
                 Orders
+              </Link>
+              <Link to="/wishlist" className="text-sm text-body transition-colors hover:text-ink">
+                Wishlist{savedCount > 0 && <span className="ml-1 text-accent">({savedCount})</span>}
               </Link>
               <Link to="/cart" className="text-sm text-body transition-colors hover:text-ink">
                 Bag{itemCount > 0 && <span className="ml-1 text-accent">({itemCount})</span>}

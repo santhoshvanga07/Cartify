@@ -3,18 +3,23 @@ import Order, { ALLOWED_TRANSITIONS } from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import { calculateTotals } from '../utils/pricing.js';
+import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
 
 /**
  * @route POST /api/orders
  * @access Private
- * body: { shippingAddress, paymentMethod }
+ * body: { shippingAddress, paymentMethod, couponCode? }
  *
  * THE RULE OF CHECKOUT: nothing about money or stock comes from the client.
  * The browser sends an address and a payment method. Everything else - which
  * items, at what price, totalling what - is read from the database here.
  */
 export const createOrder = async (req, res) => {
-  const { shippingAddress, paymentMethod = 'cod' } = req.body;
+  const { shippingAddress, paymentMethod = 'cod', couponCode } = req.body;
+
+  if (!['cod', 'razorpay'].includes(paymentMethod)) {
+    return res.status(400).json({ success: false, message: 'Invalid payment method' });
+  }
 
   const required = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode'];
   const missing = required.filter((f) => !shippingAddress?.[f]?.trim());
@@ -54,24 +59,45 @@ export const createOrder = async (req, res) => {
     quantity: i.quantity,
   }));
 
-  const pricing = calculateTotals(items.map((i) => ({ price: i.price, quantity: i.quantity })));
+  const lineItems = items.map((i) => ({ price: i.price, quantity: i.quantity }));
 
-  const order = await Order.create({
-    user: req.user.id,
-    items,
-    shippingAddress,
-    pricing: {
-      subtotal: pricing.subtotal,
-      discount: pricing.discount,
-      gst: pricing.gst,
-      shipping: pricing.shipping,
-      total: pricing.total,
-    },
-    paymentMethod,
-    paymentStatus: 'pending',
-    status: 'placed',
-    statusHistory: [{ status: 'placed', note: `Order placed (${paymentMethod.toUpperCase()})` }],
-  });
+  // The coupon is re-evaluated here even though checkout previewed it: it may
+  // have expired or run out in the meantime. The preview proves nothing.
+  let coupon = null;
+  let discount = 0;
+  if (couponCode) {
+    ({ coupon, discount } = await evaluateCoupon(couponCode, calculateTotals(lineItems).subtotal, req.user.id));
+    if (!(await redeemCoupon(coupon._id, req.user.id))) {
+      return res.status(409).json({ success: false, message: 'This coupon is no longer available' });
+    }
+  }
+
+  const pricing = calculateTotals(lineItems, { discount });
+
+  let order;
+  try {
+    order = await Order.create({
+      user: req.user.id,
+      items,
+      shippingAddress,
+      pricing: {
+        subtotal: pricing.subtotal,
+        discount: pricing.discount,
+        gst: pricing.gst,
+        shipping: pricing.shipping,
+        total: pricing.total,
+      },
+      ...(coupon && { coupon: { code: coupon.code, discount: pricing.discount, couponId: coupon._id } }),
+      paymentMethod,
+      paymentStatus: 'pending',
+      status: 'placed',
+      statusHistory: [{ status: 'placed', note: `Order placed (${paymentMethod.toUpperCase()})` }],
+    });
+  } catch (err) {
+    // The coupon was taken before the order existed - give it back.
+    if (coupon) await releaseCoupon(coupon._id, req.user.id);
+    throw err;
+  }
 
   // Reserve the stock. $inc is atomic - two shoppers cannot both take the last unit.
   await Promise.all(

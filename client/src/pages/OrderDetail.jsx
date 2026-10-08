@@ -125,6 +125,12 @@ const OrderDetail = () => {
               <dt className="text-body">Subtotal</dt>
               <dd className="text-ink">{inr(order.pricing.subtotal)}</dd>
             </div>
+            {order.pricing.discount > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-body">Discount{order.coupon?.code && ` (${order.coupon.code})`}</dt>
+                <dd className="text-accent">−{inr(order.pricing.discount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-body">GST</dt>
               <dd className="text-ink">{inr(order.pricing.gst)}</dd>

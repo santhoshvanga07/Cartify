@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import WishlistButton from './WishlistButton';
 
 /**
  * Indian rupee formatting with lakh/crore digit grouping.
@@ -39,6 +40,8 @@ const ProductCard = ({ product }) => {
             <span className="text-xs tracking-wide text-body uppercase">Sold out</span>
           </div>
         )}
+
+        <WishlistButton product={product} variant="icon" />
       </div>
 
       <div className="mt-3.5 px-0.5">

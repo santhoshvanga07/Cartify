@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { loadUser } from './features/auth/authSlice';
 import { fetchCart, resetCart } from './features/cart/cartSlice';
+import { fetchWishlist, resetWishlist } from './features/wishlist/wishlistSlice';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Home from './pages/Home';
@@ -18,12 +19,14 @@ import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
 import Assistant from './pages/Assistant';
 import Compare from './pages/Compare';
+import Wishlist from './pages/Wishlist';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminOverview from './pages/admin/AdminOverview';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminProducts from './pages/admin/AdminProducts';
 import AdminCategories from './pages/admin/AdminCategories';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminCoupons from './pages/admin/AdminCoupons';
 
 function App() {
   const dispatch = useDispatch();
@@ -35,10 +38,15 @@ function App() {
     dispatch(loadUser());
   }, [dispatch]);
 
-  // Load the cart when someone signs in; clear it when they sign out.
+  // Load the cart and wishlist when someone signs in; clear them when they sign out.
   useEffect(() => {
-    if (user) dispatch(fetchCart());
-    else dispatch(resetCart());
+    if (user) {
+      dispatch(fetchCart());
+      dispatch(fetchWishlist());
+    } else {
+      dispatch(resetCart());
+      dispatch(resetWishlist());
+    }
   }, [user, dispatch]);
 
   return (
@@ -58,6 +66,7 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/profile" element={<Profile />} />
           <Route path="/cart" element={<Cart />} />
+          <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
@@ -70,6 +79,7 @@ function App() {
             <Route path="orders" element={<AdminOrders />} />
             <Route path="products" element={<AdminProducts />} />
             <Route path="categories" element={<AdminCategories />} />
+            <Route path="coupons" element={<AdminCoupons />} />
           </Route>
         </Route>
 

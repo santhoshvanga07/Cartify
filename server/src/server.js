@@ -6,6 +6,7 @@ import seedCatalog from './utils/seedCatalog.js';
 import seedOrders from './utils/seedOrders.js';
 import seedReviews from './utils/seedReviews.js';
 import seedProductImages from './utils/seedProductImages.js';
+import seedCoupons from './utils/seedCoupons.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -20,6 +21,7 @@ const startServer = async () => {
     await seedOrders();  // sample orders so the dashboard has data
     await seedReviews();       // real reviews, then ratings recalculated from them
     await seedProductImages(); // placeholder artwork for products with no photo
+    await seedCoupons();       // WELCOME10 and FLAT500 for trying checkout
   }
 
   app.listen(PORT, () => {

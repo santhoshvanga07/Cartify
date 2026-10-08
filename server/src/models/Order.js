@@ -74,6 +74,14 @@ const orderSchema = new mongoose.Schema(
       total: { type: Number, required: true },
     },
 
+    // The coupon as it was applied - a later edit to the coupon must not
+    // change what this invoice says.
+    coupon: {
+      code: String,
+      discount: Number,
+      couponId: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
+    },
+
     paymentMethod: { type: String, enum: ['cod', 'razorpay'], required: true },
     paymentStatus: {
       type: String,

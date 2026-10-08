@@ -7,6 +7,7 @@ import { addToCart } from '../features/cart/cartSlice';
 import { inr } from '../components/ProductCard';
 import Recommendations from '../components/Recommendations';
 import Reviews from '../components/Reviews';
+import WishlistButton from '../components/WishlistButton';
 
 const ProductDetail = () => {
   const { slug } = useParams();
@@ -111,6 +112,9 @@ const ProductDetail = () => {
           >
             {product.stock === 0 ? 'Sold out' : cartLoading ? 'Adding…' : 'Add to bag'}
           </button>
+          <div className="mt-3">
+            <WishlistButton product={product} />
+          </div>
 
           <p className="mt-8 text-sm leading-relaxed text-body">{product.description}</p>
         </div>

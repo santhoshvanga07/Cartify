@@ -5,12 +5,18 @@ import { toast } from 'react-toastify';
 import { fetchCart } from '../features/cart/cartSlice';
 import { placeOrder, clearPlaced } from '../features/orders/orderSlice';
 import { inr } from '../components/ProductCard';
+import api from '../api/axios';
 
 const BLANK = { fullName: '', phone: '', line1: '', line2: '', city: '', state: '', pincode: '' };
 
 const Checkout = () => {
   const [address, setAddress] = useState(BLANK);
   const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [code, setCode] = useState('');
+  // { coupon, totals } from the server's preview. Only a preview - the order
+  // endpoint re-checks the coupon when the order is actually placed.
+  const [preview, setPreview] = useState(null);
+  const [applying, setApplying] = useState(false);
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -29,9 +35,32 @@ const Checkout = () => {
 
   const set = (e) => setAddress({ ...address, [e.target.name]: e.target.value });
 
+  // A preview is only good for the bag it was made against. If the bag
+  // changes, the discount shown would be stale - so ignore it.
+  const applied = preview?.forSubtotal === totals.subtotal ? preview : null;
+
+  const applyCoupon = async () => {
+    if (!code.trim()) return;
+    setApplying(true);
+    try {
+      const { data } = await api.post('/coupons/apply', { code });
+      setPreview({ coupon: data.coupon, totals: data.totals, forSubtotal: totals.subtotal });
+      toast.success(`${data.coupon.code} applied`);
+    } catch (err) {
+      setPreview(null);
+      toast.error(err.response?.data?.message || 'Could not apply coupon');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const shown = applied?.totals || totals;
+
   const submit = async (e) => {
     e.preventDefault();
-    const result = await dispatch(placeOrder({ shippingAddress: address, paymentMethod }));
+    const result = await dispatch(
+      placeOrder({ shippingAddress: address, paymentMethod, couponCode: applied?.coupon.code })
+    );
     if (placeOrder.fulfilled.match(result)) {
       dispatch(fetchCart()); // the server emptied it
       toast.success('Order placed');
@@ -180,27 +209,81 @@ const Checkout = () => {
               ))}
             </ul>
 
+            {/* Coupon */}
+            <div className="mt-5 border-t border-line pt-5">
+              {applied ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-accent-soft px-3 py-2 text-sm">
+                  <span>
+                    <span className="font-medium text-accent">{applied.coupon.code}</span>
+                    {applied.coupon.description && (
+                      <span className="block text-xs text-body">{applied.coupon.description}</span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreview(null);
+                      setCode('');
+                    }}
+                    className="text-xs text-body hover:text-ink"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault(); // do not submit the order form
+                        applyCoupon();
+                      }
+                    }}
+                    placeholder="Coupon code"
+                    aria-label="Coupon code"
+                    className="field"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyCoupon}
+                    disabled={applying || !code.trim()}
+                    className="btn btn-ghost shrink-0"
+                  >
+                    {applying ? '…' : 'Apply'}
+                  </button>
+                </div>
+              )}
+            </div>
+
             <dl className="mt-5 space-y-2.5 border-t border-line pt-5 text-sm">
               <div className="flex justify-between">
                 <dt className="text-body">Subtotal</dt>
-                <dd className="text-ink">{inr(totals.subtotal)}</dd>
+                <dd className="text-ink">{inr(shown.subtotal)}</dd>
               </div>
+              {shown.discount > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-body">Discount</dt>
+                  <dd className="text-accent">−{inr(shown.discount)}</dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-body">GST (18%)</dt>
-                <dd className="text-ink">{inr(totals.gst)}</dd>
+                <dd className="text-ink">{inr(shown.gst)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-body">Shipping</dt>
-                <dd className="text-ink">{totals.shipping === 0 ? 'Free' : inr(totals.shipping)}</dd>
+                <dd className="text-ink">{shown.shipping === 0 ? 'Free' : inr(shown.shipping)}</dd>
               </div>
               <div className="flex justify-between border-t border-line pt-2.5">
                 <dt className="text-ink">Total</dt>
-                <dd className="text-base font-medium text-ink">{inr(totals.total)}</dd>
+                <dd className="text-base font-medium text-ink">{inr(shown.total)}</dd>
               </div>
             </dl>
 
             <button type="submit" disabled={loading} className="btn btn-primary mt-6 w-full">
-              {loading ? 'Placing order…' : `Place order · ${inr(totals.total)}`}
+              {loading ? 'Placing order…' : `Place order · ${inr(shown.total)}`}
             </button>
           </div>
         </aside>
