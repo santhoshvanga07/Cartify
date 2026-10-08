@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { loadUser } from './features/auth/authSlice';
 import { fetchCart, resetCart } from './features/cart/cartSlice';
+import { fetchWishlist, resetWishlist } from './features/wishlist/wishlistSlice';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Home from './pages/Home';
@@ -18,12 +19,22 @@ import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
 import Assistant from './pages/Assistant';
 import Compare from './pages/Compare';
+import Wishlist from './pages/Wishlist';
+import Invoice from './pages/Invoice';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminOverview from './pages/admin/AdminOverview';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminProducts from './pages/admin/AdminProducts';
 import AdminCategories from './pages/admin/AdminCategories';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminCoupons from './pages/admin/AdminCoupons';
+import AdminModeration from './pages/admin/AdminModeration';
+import AdminCustomers from './pages/admin/AdminCustomers';
+import AdminReports from './pages/admin/AdminReports';
+import AdminSettings from './pages/admin/AdminSettings';
+import AdminActivity from './pages/admin/AdminActivity';
 
 function App() {
   const dispatch = useDispatch();
@@ -35,10 +46,15 @@ function App() {
     dispatch(loadUser());
   }, [dispatch]);
 
-  // Load the cart when someone signs in; clear it when they sign out.
+  // Load the cart and wishlist when someone signs in; clear them when they sign out.
   useEffect(() => {
-    if (user) dispatch(fetchCart());
-    else dispatch(resetCart());
+    if (user) {
+      dispatch(fetchCart());
+      dispatch(fetchWishlist());
+    } else {
+      dispatch(resetCart());
+      dispatch(resetWishlist());
+    }
   }, [user, dispatch]);
 
   return (
@@ -53,14 +69,18 @@ function App() {
         <Route path="/compare" element={<Compare />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password/:token" element={<ResetPassword />} />
 
         {/* Logged-in users only */}
         <Route element={<ProtectedRoute />}>
           <Route path="/profile" element={<Profile />} />
           <Route path="/cart" element={<Cart />} />
+          <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
+          <Route path="/orders/:id/invoice" element={<Invoice />} />
         </Route>
 
         {/* Staff area. Nested routes render inside AdminLayout's <Outlet />. */}
@@ -70,6 +90,10 @@ function App() {
             <Route path="orders" element={<AdminOrders />} />
             <Route path="products" element={<AdminProducts />} />
             <Route path="categories" element={<AdminCategories />} />
+            <Route path="coupons" element={<AdminCoupons />} />
+            <Route path="moderation" element={<AdminModeration />} />
+            <Route path="customers" element={<AdminCustomers />} />
+            <Route path="reports" element={<AdminReports />} />
           </Route>
         </Route>
 
@@ -77,6 +101,12 @@ function App() {
         <Route element={<ProtectedRoute roles={['superadmin']} />}>
           <Route path="/admin/users" element={<AdminLayout />}>
             <Route index element={<AdminUsers />} />
+          </Route>
+          <Route path="/admin/settings" element={<AdminLayout />}>
+            <Route index element={<AdminSettings />} />
+          </Route>
+          <Route path="/admin/activity" element={<AdminLayout />}>
+            <Route index element={<AdminActivity />} />
           </Route>
         </Route>
       </Routes>

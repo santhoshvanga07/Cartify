@@ -1,5 +1,6 @@
 import Category from '../models/Category.js';
 import Product from '../models/Product.js';
+import { logActivity } from '../services/activity.service.js';
 
 /** @route GET /api/categories  @access Public */
 export const listCategories = async (req, res) => {
@@ -11,6 +12,7 @@ export const listCategories = async (req, res) => {
 export const createCategory = async (req, res) => {
   const { name, description } = req.body;
   const category = await Category.create({ name, description });
+  logActivity(req, 'category.create', { type: 'category', id: category._id, label: category.name });
   res.status(201).json({ success: true, category });
 };
 
@@ -22,6 +24,7 @@ export const updateCategory = async (req, res) => {
   // Assign then save() so the slug pre-save hook runs.
   Object.assign(category, req.body);
   await category.save();
+  logActivity(req, 'category.update', { type: 'category', id: category._id, label: category.name });
 
   res.status(200).json({ success: true, category });
 };
@@ -42,5 +45,6 @@ export const deleteCategory = async (req, res) => {
 
   category.isActive = false; // soft delete
   await category.save();
+  logActivity(req, 'category.delete', { type: 'category', id: category._id, label: category.name });
   res.status(200).json({ success: true, message: 'Category deleted' });
 };

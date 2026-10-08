@@ -1,6 +1,7 @@
 import Review from '../models/Review.js';
 import Product from '../models/Product.js';
 import Order from '../models/Order.js';
+import { logActivity } from '../services/activity.service.js';
 
 /** Has this user actually received this product? */
 const hasPurchased = async (userId, productId) =>
@@ -125,6 +126,7 @@ export const deleteReview = async (req, res) => {
 
   const productId = review.product;
   await review.deleteOne();
+  if (!isOwner) logActivity(req, 'review.delete', { type: 'review', id: review._id, label: review.title || review.comment.slice(0, 40) });
   await Review.recalculateProductRating(productId);
 
   res.status(200).json({ success: true, message: 'Review deleted' });
@@ -204,6 +206,9 @@ export const setApproval = async (req, res) => {
   review.isApproved = Boolean(req.body.isApproved);
   if (review.isApproved) review.reports = []; // cleared once a human has judged it
   await review.save();
+  logActivity(req, review.isApproved ? 'review.restore' : 'review.hide', {
+    type: 'review', id: review._id, label: review.title || review.comment.slice(0, 40),
+  });
   await Review.recalculateProductRating(review.product);
 
   res.status(200).json({

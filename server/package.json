@@ -16,7 +16,14 @@
     "test:ratelimit": "node _ratelimittest.mjs",
     "seed:images": "node seed/seedProductImages.js",
     "check:cloudinary": "node _checkcloudinary.mjs",
-    "seed:upload-images": "node seed/uploadImages.js"
+    "seed:upload-images": "node seed/uploadImages.js",
+    "test:wishlist-coupons": "node _wishlistcoupontest.mjs",
+    "test:payments": "node _paymenttest.mjs",
+    "test:account": "node _accounttest.mjs",
+    "test:qa": "node _qatest.mjs",
+    "test:customers": "node _customertest.mjs",
+    "test:admin-tools": "node _admintoolstest.mjs",
+    "test:reco": "node _recotest.mjs"
   },
   "keywords": [
     "ecommerce",
@@ -36,7 +43,8 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.3",
-    "multer": "^2.3.0"
+    "multer": "^2.3.0",
+    "nodemailer": "^7.0.13"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.2.0"

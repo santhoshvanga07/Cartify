@@ -15,7 +15,17 @@ const AdminLayout = () => {
     { to: '/admin/orders', label: 'Orders' },
     { to: '/admin/products', label: 'Products' },
     { to: '/admin/categories', label: 'Categories' },
-    ...(isSuper ? [{ to: '/admin/users', label: 'Users & admins' }] : []),
+    { to: '/admin/customers', label: 'Customers' },
+    { to: '/admin/coupons', label: 'Coupons' },
+    { to: '/admin/moderation', label: 'Moderation' },
+    { to: '/admin/reports', label: 'Reports' },
+    ...(isSuper
+      ? [
+          { to: '/admin/users', label: 'Users & admins' },
+          { to: '/admin/settings', label: 'Platform settings' },
+          { to: '/admin/activity', label: 'Activity log' },
+        ]
+      : []),
   ];
 
   return (

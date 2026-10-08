@@ -1,5 +1,6 @@
 import Product from '../models/Product.js';
 import { runProductQuery } from '../services/productQuery.service.js';
+import { logActivity } from '../services/activity.service.js';
 
 /**
  * @route GET /api/products
@@ -26,6 +27,7 @@ export const getProductBySlug = async (req, res) => {
 /** @route POST /api/products  @access Admin */
 export const createProduct = async (req, res) => {
   const product = await Product.create(req.body);
+  logActivity(req, 'product.create', { type: 'product', id: product._id, label: product.name });
   res.status(201).json({ success: true, product });
 };
 
@@ -36,6 +38,7 @@ export const updateProduct = async (req, res) => {
 
   Object.assign(product, req.body);
   await product.save(); // save(), not findByIdAndUpdate - so hooks and validators run
+  logActivity(req, 'product.update', { type: 'product', id: product._id, label: product.name }, Object.keys(req.body).join(', '));
   res.status(200).json({ success: true, product });
 };
 
@@ -50,5 +53,6 @@ export const deleteProduct = async (req, res) => {
 
   product.isActive = false;
   await product.save();
+  logActivity(req, 'product.delete', { type: 'product', id: product._id, label: product.name });
   res.status(200).json({ success: true, message: 'Product removed' });
 };

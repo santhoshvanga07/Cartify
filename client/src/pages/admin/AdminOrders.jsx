@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../../api/axios';
 import { inr } from '../../components/ProductCard';
@@ -17,25 +17,37 @@ const NEXT = {
   cancelled: [],
 };
 
-const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'return_requested', 'cancelled'];
+
+/* Most moves read as "Mark shipped"; a return decision reads better as a verdict. */
+const actionLabel = (from, to) =>
+  from === 'return_requested'
+    ? to === 'returned' ? 'Accept return' : 'Decline return'
+    : `Mark ${to.replace('_', ' ')}`;
 
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  // ?user=<id> arrives from the customers screen: one customer's orders.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const userFilter = searchParams.get('user');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/orders', { params: status ? { status } : {} });
+      const params = {};
+      if (status) params.status = status;
+      if (userFilter) params.user = userFilter;
+      const { data } = await api.get('/orders', { params });
       setOrders(data.orders);
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not load orders');
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, userFilter]);
 
   useEffect(() => {
     load();
@@ -56,6 +68,14 @@ const AdminOrders = () => {
 
   return (
     <div>
+      {userFilter && (
+        <p className="mb-4 flex items-center gap-3 text-sm text-body">
+          Showing orders for {orders[0]?.user?.name || 'one customer'}
+          <button onClick={() => setSearchParams({})} className="text-xs text-accent hover:underline">
+            Show all
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button
@@ -65,7 +85,7 @@ const AdminOrders = () => {
               status === f ? 'bg-ink text-white' : 'bg-surface text-body hover:text-ink'
             }`}
           >
-            {f || 'All'}
+            {f ? f.replace('_', ' ') : 'All'}
           </button>
         ))}
       </div>
@@ -100,13 +120,16 @@ const AdminOrders = () => {
 
               <div className="text-right">
                 <p className="text-sm text-ink">{inr(o.pricing.total)}</p>
-                <p className="mt-1 text-xs uppercase tracking-wide text-muted">{o.status}</p>
+                <p className="mt-1 text-xs uppercase tracking-wide text-muted">{o.status.replace('_', ' ')}</p>
               </div>
             </div>
 
             <p className="mt-3 truncate text-xs text-body">
               {o.items.map((i) => `${i.name} × ${i.quantity}`).join(', ')}
             </p>
+            {o.status === 'return_requested' && o.returnReason && (
+              <p className="mt-2 text-xs text-ink">Return reason: {o.returnReason}</p>
+            )}
 
             {NEXT[o.status]?.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
@@ -115,9 +138,9 @@ const AdminOrders = () => {
                     key={next}
                     disabled={busyId === o._id}
                     onClick={() => advance(o, next)}
-                    className={`btn ${next === 'cancelled' ? 'btn-ghost' : 'btn-primary'} !px-3 !py-1.5 !text-xs`}
+                    className={`btn ${next === 'cancelled' || (o.status === 'return_requested' && next === 'delivered') ? 'btn-ghost' : 'btn-primary'} !px-3 !py-1.5 !text-xs`}
                   >
-                    Mark {next.replace('_', ' ')}
+                    {actionLabel(o.status, next)}
                   </button>
                 ))}
               </div>

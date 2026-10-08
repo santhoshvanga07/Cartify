@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 
 /**
@@ -72,6 +73,17 @@ const orderSchema = new mongoose.Schema(
       gst: { type: Number, required: true },
       shipping: { type: Number, required: true },
       total: { type: Number, required: true },
+      // The rate in force when the order was placed. Orders from before
+      // GST became configurable were all charged 18%.
+      gstRate: { type: Number, default: 18 },
+    },
+
+    // The coupon as it was applied - a later edit to the coupon must not
+    // change what this invoice says.
+    coupon: {
+      code: String,
+      discount: Number,
+      couponId: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
     },
 
     paymentMethod: { type: String, enum: ['cod', 'razorpay'], required: true },
@@ -89,6 +101,10 @@ const orderSchema = new mongoose.Schema(
 
     status: { type: String, enum: ORDER_STATUSES, default: 'placed', index: true },
 
+    // Starts the return window. Set once, the first time the order is delivered.
+    deliveredAt: Date,
+    returnReason: { type: String, maxlength: 500 },
+
     // An audit trail - who changed what, when. Needed for the admin activity log.
     statusHistory: [
       {
@@ -102,7 +118,17 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-/* Generate a readable order number: CFY-250820-0417 */
+// No 0/O or 1/I - order numbers get read out over the phone.
+const ORDER_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+/**
+ * Generate a readable order number: CFY-250820-7K4QM2
+ *
+ * Six characters from a 32-letter alphabet give about a billion values per
+ * day. Four random digits (9,000 values) collide surprisingly early - by the
+ * birthday paradox, ~110 orders in one day already give even odds of a clash,
+ * and the unique index then rejects a perfectly good checkout.
+ */
 orderSchema.pre('save', async function () {
   if (this.orderNumber) return;
   const d = this.createdAt || new Date();
@@ -110,7 +136,7 @@ orderSchema.pre('save', async function () {
     String(d.getFullYear()).slice(2) +
     String(d.getMonth() + 1).padStart(2, '0') +
     String(d.getDate()).padStart(2, '0');
-  const random = Math.floor(1000 + Math.random() * 9000);
+  const random = Array.from(crypto.randomBytes(6), (b) => ORDER_ALPHABET[b % 32]).join('');
   this.orderNumber = `CFY-${stamp}-${random}`;
 });
 

@@ -62,6 +62,12 @@ const authSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    // For flows that return a fresh user outside the thunks above:
+    // profile edits, password changes and password resets.
+    setUser: (state, action) => {
+      state.user = action.payload;
+      state.initialised = true;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -103,5 +109,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError } = authSlice.actions;
+export const { clearError, setUser } = authSlice.actions;
 export default authSlice.reducer;

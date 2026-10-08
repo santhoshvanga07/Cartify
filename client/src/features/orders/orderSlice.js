@@ -8,7 +8,8 @@ export const placeOrder = createAsyncThunk(
   async (payload, { rejectWithValue }) => {
     try {
       const { data } = await api.post('/orders', payload);
-      return data.order;
+      // razorpay is null for cash on delivery
+      return { ...data.order, razorpay: data.razorpay };
     } catch (err) {
       return rejectWithValue(msg(err));
     }
@@ -42,6 +43,31 @@ export const cancelOrder = createAsyncThunk('orders/cancel', async (id, { reject
   }
 });
 
+export const requestReturn = createAsyncThunk(
+  'orders/return',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const { data } = await api.patch(`/orders/${id}/return`, { reason });
+      return data.order;
+    } catch (err) {
+      return rejectWithValue(msg(err));
+    }
+  }
+);
+
+/** Sends Razorpay's success payload to the server, which checks the signature. */
+export const verifyPayment = createAsyncThunk(
+  'orders/verifyPayment',
+  async ({ id, payment }, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post(`/payments/${id}/verify`, payment);
+      return data.order;
+    } catch (err) {
+      return rejectWithValue(msg(err));
+    }
+  }
+);
+
 const orderSlice = createSlice({
   name: 'orders',
   initialState: { list: [], current: null, placed: null, loading: false, error: null },
@@ -68,6 +94,15 @@ const orderSlice = createSlice({
         state.loading = false;
         state.current = action.payload;
         state.list = state.list.map((o) => (o._id === action.payload._id ? action.payload : o));
+      })
+      .addCase(requestReturn.fulfilled, (state, action) => {
+        state.loading = false;
+        state.current = action.payload;
+      })
+      .addCase(verifyPayment.fulfilled, (state, action) => {
+        state.loading = false;
+        if (state.current?._id === action.payload._id) state.current = action.payload;
+        if (state.placed?._id === action.payload._id) state.placed = action.payload;
       })
       // One matcher pair instead of repeating pending/rejected four times.
       .addMatcher(

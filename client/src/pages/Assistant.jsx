@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import ProductCard from '../components/ProductCard';
+import VoiceButton, { voiceSupported } from '../components/VoiceButton';
 import { aiSearch, resetChat } from '../features/ai/aiSlice';
 
 const EXAMPLES = [
@@ -146,10 +147,13 @@ const Assistant = () => {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="What are you looking for?"
+          placeholder={voiceSupported ? 'Type or tap the mic and speak' : 'What are you looking for?'}
           maxLength={300}
+          aria-label="Ask the shopping assistant"
           className="flex-1 bg-transparent px-3 py-2 text-sm text-ink outline-none placeholder:text-muted"
         />
+        {/* Show the words as they are heard, then send once the shopper stops talking. */}
+        <VoiceButton onPartial={setInput} onResult={(text) => send(text)} className="w-10" />
         <button type="submit" disabled={loading || !input.trim()} className="btn btn-primary">
           Ask
         </button>

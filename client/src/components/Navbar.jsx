@@ -2,13 +2,16 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { logoutUser } from '../features/auth/authSlice';
+import { useSettings } from '../utils/settings';
 
 const Navbar = () => {
   const { user } = useSelector((state) => state.auth);
   const itemCount = useSelector((state) => state.cart.totals.itemCount);
+  const savedCount = useSelector((state) => state.wishlist.products.length);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { storeName } = useSettings();
 
   const handleLogout = async () => {
     await dispatch(logoutUser());
@@ -28,11 +31,11 @@ const Navbar = () => {
   );
 
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-page/80 backdrop-blur">
+    <header className="sticky top-0 z-20 print:hidden border-b border-line bg-page/80 backdrop-blur">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <div className="flex items-center gap-8">
           <Link to="/" className="display text-2xl text-ink">
-            Cartify
+            {storeName}
           </Link>
           {navLink('/products', 'Shop')}
           {navLink('/assistant', 'Assistant')}
@@ -44,6 +47,9 @@ const Navbar = () => {
             <>
               <Link to="/orders" className="text-sm text-body transition-colors hover:text-ink">
                 Orders
+              </Link>
+              <Link to="/wishlist" className="text-sm text-body transition-colors hover:text-ink">
+                Wishlist{savedCount > 0 && <span className="ml-1 text-accent">({savedCount})</span>}
               </Link>
               <Link to="/cart" className="text-sm text-body transition-colors hover:text-ink">
                 Bag{itemCount > 0 && <span className="ml-1 text-accent">({itemCount})</span>}

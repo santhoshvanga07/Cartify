@@ -60,6 +60,11 @@ const Login = () => {
           onChange={handleChange}
           required
         />
+        <p className="-mt-2 text-right text-xs">
+          <Link to="/forgot-password" className="text-body hover:text-ink">
+            Forgot password?
+          </Link>
+        </p>
 
         <button type="submit" disabled={loading} className="btn btn-primary w-full">
           {loading ? 'Signing in…' : 'Sign in'}

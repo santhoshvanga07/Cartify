@@ -3,18 +3,38 @@ import Order, { ALLOWED_TRANSITIONS } from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import { calculateTotals } from '../utils/pricing.js';
+import { getSettings } from '../services/settings.service.js';
+import { logActivity } from '../services/activity.service.js';
+import {
+  isRazorpayConfigured, startPayment, refundRazorpayPayment,
+} from '../services/payment.service.js';
+import {
+  notifyOrderPlaced, notifyStatusChange, notifyStaff,
+} from '../services/notification.service.js';
+import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
 
 /**
  * @route POST /api/orders
  * @access Private
- * body: { shippingAddress, paymentMethod }
+ * body: { shippingAddress, paymentMethod, couponCode? }
  *
  * THE RULE OF CHECKOUT: nothing about money or stock comes from the client.
  * The browser sends an address and a payment method. Everything else - which
  * items, at what price, totalling what - is read from the database here.
  */
 export const createOrder = async (req, res) => {
-  const { shippingAddress, paymentMethod = 'cod' } = req.body;
+  const { shippingAddress, paymentMethod = 'cod', couponCode } = req.body;
+
+  if (!['cod', 'razorpay'].includes(paymentMethod)) {
+    return res.status(400).json({ success: false, message: 'Invalid payment method' });
+  }
+  const { codEnabled, onlinePaymentEnabled } = getSettings();
+  if (paymentMethod === 'razorpay' && !(isRazorpayConfigured() && onlinePaymentEnabled)) {
+    return res.status(400).json({ success: false, message: 'Online payment is not enabled' });
+  }
+  if (paymentMethod === 'cod' && !codEnabled) {
+    return res.status(400).json({ success: false, message: 'Cash on delivery is currently unavailable' });
+  }
 
   const required = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode'];
   const missing = required.filter((f) => !shippingAddress?.[f]?.trim());
@@ -54,24 +74,46 @@ export const createOrder = async (req, res) => {
     quantity: i.quantity,
   }));
 
-  const pricing = calculateTotals(items.map((i) => ({ price: i.price, quantity: i.quantity })));
+  const lineItems = items.map((i) => ({ price: i.price, quantity: i.quantity }));
 
-  const order = await Order.create({
-    user: req.user.id,
-    items,
-    shippingAddress,
-    pricing: {
-      subtotal: pricing.subtotal,
-      discount: pricing.discount,
-      gst: pricing.gst,
-      shipping: pricing.shipping,
-      total: pricing.total,
-    },
-    paymentMethod,
-    paymentStatus: 'pending',
-    status: 'placed',
-    statusHistory: [{ status: 'placed', note: `Order placed (${paymentMethod.toUpperCase()})` }],
-  });
+  // The coupon is re-evaluated here even though checkout previewed it: it may
+  // have expired or run out in the meantime. The preview proves nothing.
+  let coupon = null;
+  let discount = 0;
+  if (couponCode) {
+    ({ coupon, discount } = await evaluateCoupon(couponCode, calculateTotals(lineItems).subtotal, req.user.id));
+    if (!(await redeemCoupon(coupon._id, req.user.id))) {
+      return res.status(409).json({ success: false, message: 'This coupon is no longer available' });
+    }
+  }
+
+  const pricing = calculateTotals(lineItems, { discount });
+
+  let order;
+  try {
+    order = await Order.create({
+      user: req.user.id,
+      items,
+      shippingAddress,
+      pricing: {
+        subtotal: pricing.subtotal,
+        discount: pricing.discount,
+        gst: pricing.gst,
+        shipping: pricing.shipping,
+        total: pricing.total,
+        gstRate: pricing.gstRate,
+      },
+      ...(coupon && { coupon: { code: coupon.code, discount: pricing.discount, couponId: coupon._id } }),
+      paymentMethod,
+      paymentStatus: 'pending',
+      status: 'placed',
+      statusHistory: [{ status: 'placed', note: `Order placed (${paymentMethod.toUpperCase()})` }],
+    });
+  } catch (err) {
+    // The coupon was taken before the order existed - give it back.
+    if (coupon) await releaseCoupon(coupon._id, req.user.id);
+    throw err;
+  }
 
   // Reserve the stock. $inc is atomic - two shoppers cannot both take the last unit.
   await Promise.all(
@@ -83,7 +125,48 @@ export const createOrder = async (req, res) => {
   // The cart has become an order; empty it.
   await Cart.findOneAndUpdate({ user: req.user.id }, { items: [] });
 
-  res.status(201).json({ success: true, order });
+  /**
+   * Online payment: the order exists (stock is held) but is unpaid. We hand
+   * the browser a Razorpay order for the SERVER's total. If the Razorpay call
+   * fails the order still stands - the shopper can retry payment from the
+   * order page, or cancel it.
+   */
+  let razorpay = null;
+  if (paymentMethod === 'razorpay') {
+    try {
+      razorpay = await startPayment(order);
+    } catch (err) {
+      console.error(`Razorpay order creation failed for ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  notifyOrderPlaced(order, req.user);
+  notifyStaff(`New order ${order.orderNumber}`, `${req.user.name} placed ${order.orderNumber} for Rs ${order.pricing.total}.`);
+
+  res.status(201).json({ success: true, order, razorpay });
+};
+
+/**
+ * Puts stock back and settles the money for an order that is being cancelled
+ * or returned. Online payments are refunded through Razorpay; if that fails
+ * the order says so, so staff can refund by hand rather than it being lost.
+ */
+const releaseOrder = async (order) => {
+  await Promise.all(
+    order.items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } }))
+  );
+
+  if (order.paymentStatus !== 'paid') return;
+
+  if (order.paymentMethod === 'razorpay') {
+    const refundId = await refundRazorpayPayment(order.paymentDetails.razorpayPaymentId, order.pricing.total);
+    if (!refundId) {
+      order.statusHistory.push({ status: order.status, note: 'Automatic refund failed - refund manually' });
+      return;
+    }
+    order.statusHistory.push({ status: order.status, note: `Refund issued (${refundId})` });
+  }
+  order.paymentStatus = 'refunded';
 };
 
 /** @route GET /api/orders/my  @access Private */
@@ -131,24 +214,67 @@ export const cancelOrder = async (req, res) => {
 
   order.status = 'cancelled';
   order.statusHistory.push({ status: 'cancelled', note: 'Cancelled by customer' });
-  if (order.paymentStatus === 'paid') order.paymentStatus = 'refunded';
+  await releaseOrder(order); // stock back, refund if it was paid online
   await order.save();
-
-  // Give the stock back.
-  await Promise.all(
-    order.items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } }))
-  );
+  notifyStatusChange(order, req.user);
 
   res.status(200).json({ success: true, order });
 };
 
-/** @route GET /api/orders  @access Admin */
+/**
+ * @route PATCH /api/orders/:id/return  @access Private (own order)
+ * body: { reason }
+ *
+ * The customer only REQUESTS a return. Staff accept it (-> returned, which
+ * restocks and refunds) or decline it (-> back to delivered).
+ */
+export const requestReturn = async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+  if (order.user.toString() !== req.user.id.toString()) {
+    return res.status(403).json({ success: false, message: 'Not your order' });
+  }
+  if (order.status !== 'delivered') {
+    return res.status(409).json({ success: false, message: 'Only delivered orders can be returned' });
+  }
+
+  const reason = String(req.body.reason || '').trim();
+  if (reason.length < 5) {
+    return res.status(400).json({ success: false, message: 'Tell us briefly why you are returning it' });
+  }
+
+  const { returnWindowDays } = getSettings();
+  const deliveredAt = order.deliveredAt
+    || [...order.statusHistory].reverse().find((h) => h.status === 'delivered')?.at;
+  const windowEnds = new Date(deliveredAt).getTime() + returnWindowDays * 24 * 60 * 60 * 1000;
+  if (!deliveredAt || Date.now() > windowEnds) {
+    return res.status(409).json({
+      success: false,
+      message: `Returns are accepted within ${returnWindowDays} days of delivery`,
+    });
+  }
+
+  order.status = 'return_requested';
+  order.returnReason = reason.slice(0, 500);
+  order.statusHistory.push({ status: 'return_requested', note: `Return requested: ${order.returnReason}` });
+  await order.save();
+  notifyStatusChange(order, req.user);
+  notifyStaff(`Return requested on ${order.orderNumber}`, `${req.user.name}: ${order.returnReason}`);
+
+  res.status(200).json({ success: true, order });
+};
+
+/** @route GET /api/orders?status=&user=  @access Admin */
 export const listAllOrders = async (req, res) => {
-  const { status } = req.query;
+  const { status, user } = req.query;
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 20);
 
-  const filter = status ? { status } : {};
+  const filter = {};
+  if (status) filter.status = String(status);
+  // One customer's history, from the customers screen.
+  if (user && mongoose.isValidObjectId(user)) filter.user = user;
   const [total, orders] = await Promise.all([
     Order.countDocuments(filter),
     Order.find(filter)
@@ -165,8 +291,10 @@ export const listAllOrders = async (req, res) => {
 export const updateOrderStatus = async (req, res) => {
   const { status, note } = req.body;
 
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+  const from = order.status;
 
   // A state machine, not a free-for-all: delivered cannot go back to placed.
   const allowed = ALLOWED_TRANSITIONS[order.status] || [];
@@ -180,19 +308,19 @@ export const updateOrderStatus = async (req, res) => {
   order.status = status;
   order.statusHistory.push({ status, note: note || `Set to ${status} by ${req.user.name}` });
 
+  // Declining a return moves it back to delivered - that is not a new delivery.
+  if (status === 'delivered' && !order.deliveredAt) order.deliveredAt = new Date();
+
   // Cash on delivery is only actually paid once it is delivered.
-  if (status === 'delivered' && order.paymentMethod === 'cod') {
+  if (status === 'delivered' && order.paymentMethod === 'cod' && order.paymentStatus !== 'paid') {
     order.paymentStatus = 'paid';
     order.paymentDetails.paidAt = new Date();
   }
 
-  if (status === 'cancelled' || status === 'returned') {
-    await Promise.all(
-      order.items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } }))
-    );
-    if (order.paymentStatus === 'paid') order.paymentStatus = 'refunded';
-  }
+  if (status === 'cancelled' || status === 'returned') await releaseOrder(order);
 
   await order.save();
+  logActivity(req, 'order.status', { type: 'order', id: order._id, label: order.orderNumber }, `${from} -> ${status}`);
+  if (order.user) notifyStatusChange(order, order.user);
   res.status(200).json({ success: true, order });
 };

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import ProductCard from '../components/ProductCard';
 import { fetchProducts, fetchCategories } from '../features/products/productSlice';
+import VoiceButton from '../components/VoiceButton';
 
 const SORTS = [
   { value: 'newest', label: 'Newest' },
@@ -58,13 +59,22 @@ const Products = () => {
         {/* Filters — quiet, no boxes, just labelled controls */}
         <aside className="h-fit space-y-5">
           <div>
-            <label className="label">Search</label>
-            <input
-              className="field"
-              placeholder="Name or brand"
-              value={filters.q}
-              onChange={(e) => set('q', e.target.value)}
-            />
+            <label className="label" htmlFor="shop-search">
+              Search
+            </label>
+            <div className="relative">
+              <input
+                id="shop-search"
+                className="field pr-10"
+                placeholder="Name or brand"
+                value={filters.q}
+                onChange={(e) => set('q', e.target.value)}
+              />
+              <VoiceButton
+                onResult={(text) => set('q', text)}
+                className="absolute right-1.5 top-1/2 h-7 w-7 -translate-y-1/2"
+              />
+            </div>
           </div>
 
           <div>

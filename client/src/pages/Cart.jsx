@@ -37,7 +37,7 @@ const Cart = () => {
   const rows = [
     ['Subtotal', inr(totals.subtotal)],
     ...(totals.discount > 0 ? [['Discount', '- ' + inr(totals.discount)]] : []),
-    ['GST (18%)', inr(totals.gst)],
+    [`GST (${totals.gstRate ?? 18}%)`, inr(totals.gst)],
     ['Shipping', totals.shipping === 0 ? 'Free' : inr(totals.shipping)],
   ];
 
@@ -131,7 +131,7 @@ const Cart = () => {
 
             {totals.shipping > 0 && (
               <p className="mt-4 text-xs text-muted">
-                Add {inr(5000 - totals.subtotal)} more for free shipping.
+                Add {inr((totals.freeShippingAbove ?? 5000) - totals.subtotal)} more for free shipping.
               </p>
             )}
 
