@@ -20,6 +20,25 @@ export const registerRules = [
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ];
 
+const newPasswordRule = (field) =>
+  body(field).isLength({ min: 8 }).withMessage('Password must be at least 8 characters');
+
+export const profileRules = [
+  body('name').trim().notEmpty().withMessage('Name is required')
+    .isLength({ max: 50 }).withMessage('Name cannot exceed 50 characters'),
+];
+
+export const changePasswordRules = [
+  body('currentPassword').notEmpty().withMessage('Enter your current password'),
+  newPasswordRule('newPassword'),
+];
+
+export const forgotPasswordRules = [
+  body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
+];
+
+export const resetPasswordRules = [newPasswordRule('password')];
+
 export const loginRules = [
   body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
   body('password').notEmpty().withMessage('Password is required'),

@@ -1,4 +1,5 @@
 import Order from '../models/Order.js';
+import { notifyPaymentReceived } from '../services/notification.service.js';
 import {
   isRazorpayConfigured, startPayment, verifyRazorpaySignature,
 } from '../services/payment.service.js';
@@ -82,6 +83,7 @@ export const verifyPayment = async (req, res) => {
   order.paymentDetails.paidAt = new Date();
   order.statusHistory.push({ status: order.status, note: `Paid online (${razorpay_payment_id})` });
   await order.save();
+  notifyPaymentReceived(order, req.user);
 
   res.status(200).json({ success: true, order });
 };

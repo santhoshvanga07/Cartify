@@ -41,6 +41,15 @@ export const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+/** Reset emails cost money and can be used to spam someone's inbox. */
+export const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: isProduction ? 5 : 100,
+  message: { success: false, message: 'Too many password reset requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 /** Applied to every /api route as a blanket abuse guard. */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

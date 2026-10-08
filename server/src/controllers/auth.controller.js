@@ -1,5 +1,11 @@
 import User from '../models/User.js';
+import crypto from 'node:crypto';
 import sendTokenResponse from '../utils/sendTokenResponse.js';
+import {
+  notifyWelcome, notifyPasswordReset, notifyPasswordChanged,
+} from '../services/notification.service.js';
+
+const RESET_MINUTES = 30;
 
 /**
  * @desc    Register a new user
@@ -16,6 +22,7 @@ export const register = async (req, res) => {
 
   // NOTE: role is deliberately NOT taken from req.body.
   const user = await User.create({ name, email, password });
+  notifyWelcome(user);
 
   sendTokenResponse(user, 201, res);
 };
@@ -63,4 +70,91 @@ export const logout = (req, res) => {
  */
 export const getMe = (req, res) => {
   res.status(200).json({ success: true, user: req.user });
+};
+
+/**
+ * @desc    Update your own profile (name only - email is your login)
+ * @route   PUT /api/auth/me
+ * @access  Private
+ */
+export const updateMe = async (req, res) => {
+  // Whitelist, not Object.assign(req.body): role and isActive must never
+  // be settable from here.
+  req.user.name = req.body.name;
+  await req.user.save();
+  res.status(200).json({ success: true, user: req.user });
+};
+
+/**
+ * @desc    Change password while signed in
+ * @route   PUT /api/auth/password
+ * @access  Private
+ */
+export const changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const user = await User.findById(req.user.id).select('+password');
+  if (!(await user.matchPassword(currentPassword || ''))) {
+    return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+  }
+
+  user.password = newPassword;
+  await user.save(); // pre-save hashes it and stamps passwordChangedAt
+  notifyPasswordChanged(user);
+
+  // A fresh cookie for THIS device; every other session is now invalid.
+  sendTokenResponse(user, 200, res);
+};
+
+/**
+ * @desc    Email a password reset link
+ * @route   POST /api/auth/forgot-password
+ * @access  Public
+ *
+ * Always answers the same way, whether or not the email has an account.
+ * Otherwise this endpoint would tell anyone which addresses are registered.
+ */
+export const forgotPassword = async (req, res) => {
+  const user = await User.findOne({ email: req.body.email, isActive: true });
+
+  if (user) {
+    const raw = user.createPasswordResetToken(RESET_MINUTES);
+    await user.save({ validateBeforeSave: false });
+    const url = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${raw}`;
+    notifyPasswordReset(user, url, RESET_MINUTES);
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'If that email has an account, a reset link is on its way.',
+  });
+};
+
+/**
+ * @desc    Set a new password using the emailed token
+ * @route   POST /api/auth/reset-password/:token
+ * @access  Public
+ */
+export const resetPassword = async (req, res) => {
+  const hashed = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+  const user = await User.findOne({
+    resetPasswordToken: hashed,
+    resetPasswordExpire: { $gt: new Date() },
+  });
+  if (!user) {
+    return res.status(400).json({ success: false, message: 'This reset link is invalid or has expired' });
+  }
+  if (!user.isActive) {
+    return res.status(403).json({ success: false, message: 'Account suspended' });
+  }
+
+  user.password = req.body.password;
+  // Single use: clear the token the moment it is spent.
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+  await user.save();
+  notifyPasswordChanged(user);
+
+  sendTokenResponse(user, 200, res);
 };

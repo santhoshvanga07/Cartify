@@ -17,6 +17,7 @@ import wishlistRoutes from './routes/wishlist.routes.js';
 import couponRoutes from './routes/coupon.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
 import { notFound, errorHandler } from './middleware/error.middleware.js';
+import { apiLimiter } from './middleware/rateLimit.middleware.js';
 
 const app = express();
 
@@ -40,6 +41,9 @@ app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
 
 /* ---------- Routes ---------- */
+
+// Blanket abuse guard; tighter limiters sit on login, register, AI and resets.
+app.use('/api', apiLimiter);
 
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);

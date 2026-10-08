@@ -28,6 +28,9 @@ export const protect = async (req, res, next) => {
   if (!user.isActive) {
     return res.status(403).json({ success: false, message: 'Account suspended' });
   }
+  if (user.changedPasswordAfter(decoded.iat)) {
+    return res.status(401).json({ success: false, message: 'Password changed - please sign in again' });
+  }
 
   req.user = user;
   next();
@@ -64,7 +67,7 @@ export const optionalAuth = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
-    if (user && user.isActive) req.user = user;
+    if (user && user.isActive && !user.changedPasswordAfter(decoded.iat)) req.user = user;
   } catch {
     // A bad or expired token simply means "treat them as a guest".
   }

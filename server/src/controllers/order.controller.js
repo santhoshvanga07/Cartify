@@ -6,6 +6,9 @@ import { calculateTotals } from '../utils/pricing.js';
 import {
   isRazorpayConfigured, startPayment, refundRazorpayPayment,
 } from '../services/payment.service.js';
+import {
+  notifyOrderPlaced, notifyStatusChange, notifyStaff,
+} from '../services/notification.service.js';
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
 
 /**
@@ -130,6 +133,9 @@ export const createOrder = async (req, res) => {
     }
   }
 
+  notifyOrderPlaced(order, req.user);
+  notifyStaff(`New order ${order.orderNumber}`, `${req.user.name} placed ${order.orderNumber} for Rs ${order.pricing.total}.`);
+
   res.status(201).json({ success: true, order, razorpay });
 };
 
@@ -206,6 +212,7 @@ export const cancelOrder = async (req, res) => {
   order.statusHistory.push({ status: 'cancelled', note: 'Cancelled by customer' });
   await releaseOrder(order); // stock back, refund if it was paid online
   await order.save();
+  notifyStatusChange(order, req.user);
 
   res.status(200).json({ success: true, order });
 };
@@ -247,6 +254,8 @@ export const requestReturn = async (req, res) => {
   order.returnReason = reason.slice(0, 500);
   order.statusHistory.push({ status: 'return_requested', note: `Return requested: ${order.returnReason}` });
   await order.save();
+  notifyStatusChange(order, req.user);
+  notifyStaff(`Return requested on ${order.orderNumber}`, `${req.user.name}: ${order.returnReason}`);
 
   res.status(200).json({ success: true, order });
 };
@@ -274,7 +283,7 @@ export const listAllOrders = async (req, res) => {
 export const updateOrderStatus = async (req, res) => {
   const { status, note } = req.body;
 
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
   // A state machine, not a free-for-all: delivered cannot go back to placed.
@@ -301,5 +310,6 @@ export const updateOrderStatus = async (req, res) => {
   if (status === 'cancelled' || status === 'returned') await releaseOrder(order);
 
   await order.save();
+  if (order.user) notifyStatusChange(order, order.user);
   res.status(200).json({ success: true, order });
 };
