@@ -20,6 +20,7 @@ import OrderDetail from './pages/OrderDetail';
 import Assistant from './pages/Assistant';
 import Compare from './pages/Compare';
 import Wishlist from './pages/Wishlist';
+import Invoice from './pages/Invoice';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminOverview from './pages/admin/AdminOverview';
 import AdminOrders from './pages/admin/AdminOrders';
@@ -70,6 +71,7 @@ function App() {
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
+          <Route path="/orders/:id/invoice" element={<Invoice />} />
         </Route>
 
         {/* Staff area. Nested routes render inside AdminLayout's <Outlet />. */}

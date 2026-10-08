@@ -3,6 +3,9 @@ import Order, { ALLOWED_TRANSITIONS } from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import { calculateTotals } from '../utils/pricing.js';
+import {
+  isRazorpayConfigured, startPayment, refundRazorpayPayment,
+} from '../services/payment.service.js';
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
 
 /**
@@ -19,6 +22,9 @@ export const createOrder = async (req, res) => {
 
   if (!['cod', 'razorpay'].includes(paymentMethod)) {
     return res.status(400).json({ success: false, message: 'Invalid payment method' });
+  }
+  if (paymentMethod === 'razorpay' && !isRazorpayConfigured()) {
+    return res.status(400).json({ success: false, message: 'Online payment is not enabled' });
   }
 
   const required = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode'];
@@ -109,7 +115,48 @@ export const createOrder = async (req, res) => {
   // The cart has become an order; empty it.
   await Cart.findOneAndUpdate({ user: req.user.id }, { items: [] });
 
-  res.status(201).json({ success: true, order });
+  /**
+   * Online payment: the order exists (stock is held) but is unpaid. We hand
+   * the browser a Razorpay order for the SERVER's total. If the Razorpay call
+   * fails the order still stands - the shopper can retry payment from the
+   * order page, or cancel it.
+   */
+  let razorpay = null;
+  if (paymentMethod === 'razorpay') {
+    try {
+      razorpay = await startPayment(order);
+    } catch (err) {
+      console.error(`Razorpay order creation failed for ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  res.status(201).json({ success: true, order, razorpay });
+};
+
+/** Days after delivery during which a customer may ask for a return. */
+export const RETURN_WINDOW_DAYS = 7;
+
+/**
+ * Puts stock back and settles the money for an order that is being cancelled
+ * or returned. Online payments are refunded through Razorpay; if that fails
+ * the order says so, so staff can refund by hand rather than it being lost.
+ */
+const releaseOrder = async (order) => {
+  await Promise.all(
+    order.items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } }))
+  );
+
+  if (order.paymentStatus !== 'paid') return;
+
+  if (order.paymentMethod === 'razorpay') {
+    const refundId = await refundRazorpayPayment(order.paymentDetails.razorpayPaymentId, order.pricing.total);
+    if (!refundId) {
+      order.statusHistory.push({ status: order.status, note: 'Automatic refund failed - refund manually' });
+      return;
+    }
+    order.statusHistory.push({ status: order.status, note: `Refund issued (${refundId})` });
+  }
+  order.paymentStatus = 'refunded';
 };
 
 /** @route GET /api/orders/my  @access Private */
@@ -157,13 +204,49 @@ export const cancelOrder = async (req, res) => {
 
   order.status = 'cancelled';
   order.statusHistory.push({ status: 'cancelled', note: 'Cancelled by customer' });
-  if (order.paymentStatus === 'paid') order.paymentStatus = 'refunded';
+  await releaseOrder(order); // stock back, refund if it was paid online
   await order.save();
 
-  // Give the stock back.
-  await Promise.all(
-    order.items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } }))
-  );
+  res.status(200).json({ success: true, order });
+};
+
+/**
+ * @route PATCH /api/orders/:id/return  @access Private (own order)
+ * body: { reason }
+ *
+ * The customer only REQUESTS a return. Staff accept it (-> returned, which
+ * restocks and refunds) or decline it (-> back to delivered).
+ */
+export const requestReturn = async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+  if (order.user.toString() !== req.user.id.toString()) {
+    return res.status(403).json({ success: false, message: 'Not your order' });
+  }
+  if (order.status !== 'delivered') {
+    return res.status(409).json({ success: false, message: 'Only delivered orders can be returned' });
+  }
+
+  const reason = String(req.body.reason || '').trim();
+  if (reason.length < 5) {
+    return res.status(400).json({ success: false, message: 'Tell us briefly why you are returning it' });
+  }
+
+  const deliveredAt = order.deliveredAt
+    || [...order.statusHistory].reverse().find((h) => h.status === 'delivered')?.at;
+  const windowEnds = new Date(deliveredAt).getTime() + RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  if (!deliveredAt || Date.now() > windowEnds) {
+    return res.status(409).json({
+      success: false,
+      message: `Returns are accepted within ${RETURN_WINDOW_DAYS} days of delivery`,
+    });
+  }
+
+  order.status = 'return_requested';
+  order.returnReason = reason.slice(0, 500);
+  order.statusHistory.push({ status: 'return_requested', note: `Return requested: ${order.returnReason}` });
+  await order.save();
 
   res.status(200).json({ success: true, order });
 };
@@ -206,18 +289,16 @@ export const updateOrderStatus = async (req, res) => {
   order.status = status;
   order.statusHistory.push({ status, note: note || `Set to ${status} by ${req.user.name}` });
 
+  // Declining a return moves it back to delivered - that is not a new delivery.
+  if (status === 'delivered' && !order.deliveredAt) order.deliveredAt = new Date();
+
   // Cash on delivery is only actually paid once it is delivered.
-  if (status === 'delivered' && order.paymentMethod === 'cod') {
+  if (status === 'delivered' && order.paymentMethod === 'cod' && order.paymentStatus !== 'paid') {
     order.paymentStatus = 'paid';
     order.paymentDetails.paidAt = new Date();
   }
 
-  if (status === 'cancelled' || status === 'returned') {
-    await Promise.all(
-      order.items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } }))
-    );
-    if (order.paymentStatus === 'paid') order.paymentStatus = 'refunded';
-  }
+  if (status === 'cancelled' || status === 'returned') await releaseOrder(order);
 
   await order.save();
   res.status(200).json({ success: true, order });

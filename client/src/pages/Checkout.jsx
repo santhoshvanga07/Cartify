@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { fetchCart } from '../features/cart/cartSlice';
-import { placeOrder, clearPlaced } from '../features/orders/orderSlice';
+import { placeOrder, clearPlaced, verifyPayment } from '../features/orders/orderSlice';
+import { openRazorpay } from '../utils/razorpay';
 import { inr } from '../components/ProductCard';
 import api from '../api/axios';
 
@@ -17,6 +18,8 @@ const Checkout = () => {
   // endpoint re-checks the coupon when the order is actually placed.
   const [preview, setPreview] = useState(null);
   const [applying, setApplying] = useState(false);
+  const [onlineEnabled, setOnlineEnabled] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -32,6 +35,14 @@ const Checkout = () => {
   useEffect(() => {
     if (error) toast.error(error);
   }, [error]);
+
+  // Online payment is offered only when the server has Razorpay keys.
+  useEffect(() => {
+    api
+      .get('/payments/config')
+      .then(({ data }) => setOnlineEnabled(data.razorpay))
+      .catch(() => {});
+  }, []);
 
   const set = (e) => setAddress({ ...address, [e.target.name]: e.target.value });
 
@@ -61,13 +72,33 @@ const Checkout = () => {
     const result = await dispatch(
       placeOrder({ shippingAddress: address, paymentMethod, couponCode: applied?.coupon.code })
     );
-    if (placeOrder.fulfilled.match(result)) {
-      dispatch(fetchCart()); // the server emptied it
-      toast.success('Order placed');
+    if (!placeOrder.fulfilled.match(result)) return;
+    dispatch(fetchCart()); // the server emptied it
+
+    const order = result.payload;
+    if (order.paymentMethod !== 'razorpay') return toast.success('Order placed');
+    if (!order.razorpay) return toast.warn('Order placed, but payment could not start. Pay from the order page.');
+
+    setPaying(true);
+    try {
+      const payment = await openRazorpay(order.razorpay, user, `Order ${order.orderNumber}`);
+      const verified = await dispatch(verifyPayment({ id: order._id, payment }));
+      if (verifyPayment.fulfilled.match(verified)) toast.success('Payment received');
+      else toast.error(verified.payload);
+    } catch (err) {
+      // Closing the window is not an error - the order waits for payment.
+      if (err?.dismissed) toast.info('Payment not completed. You can pay from the order page.');
+      else toast.error(err.message);
+    } finally {
+      setPaying(false);
     }
   };
 
   /* ---------- Confirmation ---------- */
+  if (paying) {
+    return <p className="px-6 py-24 text-center text-sm text-muted">Waiting for payment…</p>;
+  }
+
   if (placed) {
     return (
       <div className="mx-auto max-w-lg px-6 py-24 text-center">
@@ -76,6 +107,8 @@ const Checkout = () => {
         <p className="mt-3 text-sm text-body">
           Order <span className="text-ink">{placed.orderNumber}</span> is placed.
           {placed.paymentMethod === 'cod' && ' Pay in cash when it arrives.'}
+          {placed.paymentMethod === 'razorpay' &&
+            (placed.paymentStatus === 'paid' ? ' Payment received.' : ' Payment is still pending.')}
         </p>
         <p className="mt-1 text-sm text-body">Total {inr(placed.pricing.total)}</p>
 
@@ -183,11 +216,24 @@ const Checkout = () => {
               </span>
             </label>
 
-            <label className="flex cursor-not-allowed items-start gap-3 rounded-xl bg-surface p-4 opacity-50">
-              <input type="radio" name="pay" disabled className="mt-1" />
+            <label
+              className={`flex items-start gap-3 rounded-xl bg-surface p-4 ${
+                onlineEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+              }`}
+            >
+              <input
+                type="radio"
+                name="pay"
+                disabled={!onlineEnabled}
+                checked={paymentMethod === 'razorpay'}
+                onChange={() => setPaymentMethod('razorpay')}
+                className="mt-1"
+              />
               <span>
                 <span className="block text-sm text-ink">Pay online (Razorpay)</span>
-                <span className="block text-xs text-body">Add your Razorpay test keys to enable.</span>
+                <span className="block text-xs text-body">
+                  {onlineEnabled ? 'UPI, cards, net banking and wallets.' : 'Add your Razorpay test keys to enable.'}
+                </span>
               </span>
             </label>
           </div>

@@ -17,7 +17,13 @@ const NEXT = {
   cancelled: [],
 };
 
-const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'return_requested', 'cancelled'];
+
+/* Most moves read as "Mark shipped"; a return decision reads better as a verdict. */
+const actionLabel = (from, to) =>
+  from === 'return_requested'
+    ? to === 'returned' ? 'Accept return' : 'Decline return'
+    : `Mark ${to.replace('_', ' ')}`;
 
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -65,7 +71,7 @@ const AdminOrders = () => {
               status === f ? 'bg-ink text-white' : 'bg-surface text-body hover:text-ink'
             }`}
           >
-            {f || 'All'}
+            {f ? f.replace('_', ' ') : 'All'}
           </button>
         ))}
       </div>
@@ -100,13 +106,16 @@ const AdminOrders = () => {
 
               <div className="text-right">
                 <p className="text-sm text-ink">{inr(o.pricing.total)}</p>
-                <p className="mt-1 text-xs uppercase tracking-wide text-muted">{o.status}</p>
+                <p className="mt-1 text-xs uppercase tracking-wide text-muted">{o.status.replace('_', ' ')}</p>
               </div>
             </div>
 
             <p className="mt-3 truncate text-xs text-body">
               {o.items.map((i) => `${i.name} × ${i.quantity}`).join(', ')}
             </p>
+            {o.status === 'return_requested' && o.returnReason && (
+              <p className="mt-2 text-xs text-ink">Return reason: {o.returnReason}</p>
+            )}
 
             {NEXT[o.status]?.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
@@ -115,9 +124,9 @@ const AdminOrders = () => {
                     key={next}
                     disabled={busyId === o._id}
                     onClick={() => advance(o, next)}
-                    className={`btn ${next === 'cancelled' ? 'btn-ghost' : 'btn-primary'} !px-3 !py-1.5 !text-xs`}
+                    className={`btn ${next === 'cancelled' || (o.status === 'return_requested' && next === 'delivered') ? 'btn-ghost' : 'btn-primary'} !px-3 !py-1.5 !text-xs`}
                   >
-                    Mark {next.replace('_', ' ')}
+                    {actionLabel(o.status, next)}
                   </button>
                 ))}
               </div>

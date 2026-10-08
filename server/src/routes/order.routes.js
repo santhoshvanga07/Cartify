@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  createOrder, getMyOrders, getOrder, cancelOrder, listAllOrders, updateOrderStatus,
+  createOrder, getMyOrders, getOrder, cancelOrder, requestReturn, listAllOrders, updateOrderStatus,
 } from '../controllers/order.controller.js';
 import { protect, authorize } from '../middleware/auth.middleware.js';
 
@@ -11,6 +11,7 @@ router.use(protect);
 router.post('/', createOrder);
 router.get('/my', getMyOrders);
 router.patch('/:id/cancel', cancelOrder);
+router.patch('/:id/return', requestReturn);
 
 // Admin - registered before '/:id' would be ambiguous, so order matters:
 // '/my' is declared above '/:id' or Express would treat "my" as an id.

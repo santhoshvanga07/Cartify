@@ -17,7 +17,8 @@
     "seed:images": "node seed/seedProductImages.js",
     "check:cloudinary": "node _checkcloudinary.mjs",
     "seed:upload-images": "node seed/uploadImages.js",
-    "test:wishlist-coupons": "node _wishlistcoupontest.mjs"
+    "test:wishlist-coupons": "node _wishlistcoupontest.mjs",
+    "test:payments": "node _paymenttest.mjs"
   },
   "keywords": [
     "ecommerce",
