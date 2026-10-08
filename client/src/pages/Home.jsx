@@ -1,13 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchProducts, fetchCategories } from '../features/products/productSlice';
 import ProductCard from '../components/ProductCard';
+import { ProductShelf } from '../components/Recommendations';
+import { getRecentlyViewed } from '../utils/recentlyViewed';
+
+const SHELF = 'border-t border-line py-14';
 
 const Home = () => {
   const dispatch = useDispatch();
   const { items, categories, loading } = useSelector((state) => state.products);
   const user = useSelector((state) => state.auth.user);
+  const [recent] = useState(() => getRecentlyViewed().slice(0, 4));
 
   useEffect(() => {
     dispatch(fetchCategories());
@@ -82,6 +87,21 @@ const Home = () => {
             : items.slice(0, 4).map((p) => <ProductCard key={p._id} product={p} />)}
         </div>
       </section>
+
+      <ProductShelf title="Trending now" endpoint="/ai/trending" className={SHELF} titleSize="text-3xl" />
+
+      {/* Keyed on the user so signing in or out swaps the shelf immediately. */}
+      {user && <ProductShelf key={user._id} title="Picked for you" endpoint="/ai/for-you" className={SHELF} titleSize="text-3xl" />}
+
+      {recent.length > 0 && (
+        <ProductShelf
+          title="Recently viewed"
+          endpoint="/ai/by-slugs"
+          params={{ slugs: recent.join(',') }}
+          className={SHELF}
+          titleSize="text-3xl"
+        />
+      )}
 
       <footer className="border-t border-line py-10 text-xs text-muted">
         Cartify &middot; Software Engineering Lab project

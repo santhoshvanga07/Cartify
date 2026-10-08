@@ -59,7 +59,7 @@ const ProductCard = ({ product }) => {
 
         {ratingAvg > 0 && (
           <p className="mt-1 text-xs text-muted">
-            {ratingAvg.toFixed(1)} &middot; {product.numReviews} reviews
+            {ratingAvg.toFixed(1)} &middot; {product.numReviews} {product.numReviews === 1 ? 'review' : 'reviews'}
           </p>
         )}
       </div>

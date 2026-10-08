@@ -22,7 +22,8 @@
     "test:account": "node _accounttest.mjs",
     "test:qa": "node _qatest.mjs",
     "test:customers": "node _customertest.mjs",
-    "test:admin-tools": "node _admintoolstest.mjs"
+    "test:admin-tools": "node _admintoolstest.mjs",
+    "test:reco": "node _recotest.mjs"
   },
   "keywords": [
     "ecommerce",

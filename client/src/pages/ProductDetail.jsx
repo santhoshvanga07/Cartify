@@ -1,11 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { fetchProduct } from '../features/products/productSlice';
 import { addToCart } from '../features/cart/cartSlice';
 import { inr } from '../components/ProductCard';
-import Recommendations from '../components/Recommendations';
+import Recommendations, { ProductShelf } from '../components/Recommendations';
+import { getRecentlyViewed, recordView } from '../utils/recentlyViewed';
 import Reviews from '../components/Reviews';
 import WishlistButton from '../components/WishlistButton';
 import Questions from '../components/Questions';
@@ -29,8 +30,14 @@ const ProductDetail = () => {
     else toast.error(result.payload);
   };
 
+  // Read during render, i.e. BEFORE the effect below records this visit, so
+  // the shelf shows what came before rather than the page you are on.
+  // Keyed on slug: recomputed on every product-to-product navigation.
+  const recent = useMemo(() => getRecentlyViewed().filter((s) => s !== slug).slice(0, 4), [slug]);
+
   useEffect(() => {
     dispatch(fetchProduct(slug));
+    recordView(slug);
   }, [slug, dispatch]);
 
   if (loading) {
@@ -141,6 +148,10 @@ const ProductDetail = () => {
       <Questions slug={product.slug} />
 
       <Recommendations slug={product.slug} />
+
+      {recent.length > 0 && (
+        <ProductShelf title="Recently viewed" endpoint="/ai/by-slugs" params={{ slugs: recent.join(',') }} />
+      )}
     </div>
   );
 };

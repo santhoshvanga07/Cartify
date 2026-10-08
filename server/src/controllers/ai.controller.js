@@ -1,5 +1,7 @@
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
+import Order from '../models/Order.js';
+import Wishlist from '../models/Wishlist.js';
 import { chatJSON, sanitizeFilters, isAiConfigured } from '../services/ai.service.js';
 import { runProductQuery, VALID_SORTS } from '../services/productQuery.service.js';
 
@@ -205,4 +207,115 @@ export const recommendations = async (req, res) => {
     count: products.length,
     products,
   });
+};
+
+/*
+ * ------------------------------------------------------------------
+ * More recommendation shelves. Like the one above, every one of these
+ * is a plain database query: explainable ("people who bought X also
+ * bought Y"), instant and free.
+ * ------------------------------------------------------------------
+ */
+
+const SHELF_FIELDS = 'name slug brand price mrp stock images ratingAvg numReviews category';
+const SOLD = { status: { $nin: ['cancelled', 'returned'] } };
+
+/** Loads products by id in the given order, keeping only ones still for sale. */
+const productsInOrder = async (ids) => {
+  const docs = await Product.find({ _id: { $in: ids }, isActive: true, stock: { $gt: 0 } }).select(SHELF_FIELDS);
+  const byId = new Map(docs.map((d) => [String(d._id), d]));
+  return ids.map((id) => byId.get(String(id))).filter(Boolean);
+};
+
+/**
+ * @route GET /api/ai/recommendations/:slug/bought-together
+ * @access Public
+ * Market-basket in one pipeline: orders that contained this product,
+ * every OTHER line in those orders, counted.
+ */
+export const boughtTogether = async (req, res) => {
+  const product = await Product.findOne({ slug: req.params.slug, isActive: true }).select('_id');
+  if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+
+  const pairs = await Order.aggregate([
+    { $match: { ...SOLD, 'items.product': product._id } },
+    { $unwind: '$items' },
+    { $match: { 'items.product': { $ne: product._id } } },
+    { $group: { _id: '$items.product', orders: { $sum: 1 } } },
+    { $sort: { orders: -1 } },
+    { $limit: 8 },
+  ]);
+
+  const products = (await productsInOrder(pairs.map((p) => p._id))).slice(0, 4);
+  res.status(200).json({ success: true, basedOn: 'Bought in the same order', count: products.length, products });
+};
+
+/**
+ * @route GET /api/ai/trending
+ * @access Public
+ * Most units sold in the last 30 days.
+ */
+export const trending = async (req, res) => {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const top = await Order.aggregate([
+    { $match: { ...SOLD, createdAt: { $gte: since } } },
+    { $unwind: '$items' },
+    { $group: { _id: '$items.product', units: { $sum: '$items.quantity' } } },
+    { $sort: { units: -1 } },
+    { $limit: 12 },
+  ]);
+
+  const products = (await productsInOrder(top.map((t) => t._id))).slice(0, 4);
+  res.status(200).json({ success: true, basedOn: 'Most bought in the last 30 days', count: products.length, products });
+};
+
+/**
+ * @route GET /api/ai/for-you
+ * @access Private
+ * Categories this shopper has bought from or saved, best rated first,
+ * leaving out what they already own.
+ */
+export const forYou = async (req, res) => {
+  const [orders, wishlist] = await Promise.all([
+    Order.find({ user: req.user._id, ...SOLD }).select('items.product').lean(),
+    Wishlist.findOne({ user: req.user._id }).select('products').lean(),
+  ]);
+
+  const owned = orders.flatMap((o) => o.items.map((i) => i.product));
+  const seeds = [...owned, ...(wishlist?.products || [])];
+  if (seeds.length === 0) {
+    return res.status(200).json({ success: true, basedOn: 'Not enough history yet', count: 0, products: [] });
+  }
+
+  const categories = await Product.distinct('category', { _id: { $in: seeds } });
+  const products = await Product.find({
+    category: { $in: categories },
+    _id: { $nin: seeds },
+    isActive: true,
+    stock: { $gt: 0 },
+  })
+    .select(SHELF_FIELDS)
+    .sort({ ratingAvg: -1, numReviews: -1 })
+    .limit(4);
+
+  res.status(200).json({ success: true, basedOn: 'Your orders and wishlist', count: products.length, products });
+};
+
+/**
+ * @route GET /api/ai/by-slugs?slugs=a,b,c
+ * @access Public
+ * Powers "Recently viewed": the browser remembers slugs, the server
+ * supplies today's price and stock. Order is preserved.
+ */
+export const bySlugs = async (req, res) => {
+  const slugs = String(req.query.slugs || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => /^[a-z0-9-]{1,120}$/.test(s))
+    .slice(0, 12);
+
+  const docs = await Product.find({ slug: { $in: slugs }, isActive: true }).select(SHELF_FIELDS);
+  const bySlug = new Map(docs.map((d) => [d.slug, d]));
+  const products = slugs.map((s) => bySlug.get(s)).filter(Boolean);
+  res.status(200).json({ success: true, count: products.length, products });
 };
