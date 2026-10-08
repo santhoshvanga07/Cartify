@@ -19,7 +19,7 @@ export const loadSettings = async () => {
   const doc = await Setting.findOneAndUpdate(
     { key: 'platform' },
     { $setOnInsert: { key: 'platform' } },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
   ).lean();
   cached = { ...DEFAULTS, ...doc };
   loadedAt = Date.now();

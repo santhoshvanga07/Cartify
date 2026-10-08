@@ -70,7 +70,8 @@ const Home = () => {
         </section>
       )}
 
-      {/* Highest rated */}
+      {/* Highest rated - hidden on a brand-new store with nothing listed yet */}
+      {(loading || items.length > 0) && (
       <section className="border-t border-line py-14">
         <div className="flex items-end justify-between">
           <h2 className="display text-3xl text-ink">Highest rated</h2>
@@ -87,6 +88,7 @@ const Home = () => {
             : items.slice(0, 4).map((p) => <ProductCard key={p._id} product={p} />)}
         </div>
       </section>
+      )}
 
       <ProductShelf title="Trending now" endpoint="/ai/trending" className={SHELF} titleSize="text-3xl" />
 

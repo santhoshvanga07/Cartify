@@ -10,36 +10,46 @@ import api from '../../api/axios';
  * it, because multipart requires a random boundary string that only it knows.
  * Setting it by hand is the classic cause of "Unexpected end of form".
  */
-const ProductImages = ({ product, onChange }) => {
+const ProductImages = ({ product, onChange, enabled = true }) => {
   const [images, setImages] = useState(product.images || []);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
 
-  const upload = async (file) => {
-    if (!file) return;
+  /**
+   * Uploads the picked files one at a time. Sequential on purpose: the server
+   * enforces the 5-photo limit per request, and parallel uploads would race
+   * past it and leave the shopper-facing order of photos random.
+   */
+  const upload = async (fileList) => {
+    const files = [...(fileList || [])];
+    if (files.length === 0) return;
 
-    // Check size client-side too: rejecting a 20 MB file here saves the user
-    // a slow upload that the server would refuse anyway. The server check is
-    // the one that counts.
-    if (file.size > 5 * 1024 * 1024) {
-      return toast.error('Image must be 5 MB or smaller');
-    }
-
-    const body = new FormData();
-    body.append('image', file);
+    const room = 5 - images.length;
+    if (files.length > room) toast.info(`Only ${room} more photo${room === 1 ? '' : 's'} allowed - adding the first ${room}`);
 
     setUploading(true);
-    try {
-      const { data } = await api.post(`/products/${product._id}/images`, body);
-      setImages(data.images);
-      onChange?.(data.images);
-      toast.success('Image added');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = ''; // allow re-picking the same file
+    let added = 0;
+    for (const file of files.slice(0, room)) {
+      // Check size client-side too: rejecting a 20 MB file here saves a slow
+      // upload the server would refuse anyway. The server check is the one that counts.
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} is over 5 MB`);
+        continue;
+      }
+      const body = new FormData();
+      body.append('image', file);
+      try {
+        const { data } = await api.post(`/products/${product._id}/images`, body);
+        setImages(data.images);
+        onChange?.(data.images);
+        added++;
+      } catch (err) {
+        toast.error(`${file.name}: ${err.response?.data?.message || 'upload failed'}`);
+      }
     }
+    if (added) toast.success(`${added} photo${added === 1 ? '' : 's'} added`);
+    setUploading(false);
+    if (inputRef.current) inputRef.current.value = ''; // allow re-picking the same file
   };
 
   const remove = async (publicId) => {
@@ -55,7 +65,7 @@ const ProductImages = ({ product, onChange }) => {
 
   return (
     <div>
-      <label className="label">Images</label>
+      <label className="label">Photos {images.length > 0 && <span className="text-muted">· first one is the cover</span>}</label>
 
       <div className="flex flex-wrap gap-3">
         {images.map((img) => (
@@ -74,10 +84,11 @@ const ProductImages = ({ product, onChange }) => {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={uploading || images.length >= 5}
+          disabled={!enabled || uploading || images.length >= 5}
+          title={enabled ? undefined : 'Cloudinary is not configured on the server'}
           className="flex h-20 w-20 items-center justify-center rounded-lg bg-page text-xs text-muted transition-colors hover:text-accent disabled:opacity-40"
         >
-          {uploading ? 'Uploading…' : images.length >= 5 ? 'Max 5' : '+ Add'}
+          {!enabled ? 'Off' : uploading ? 'Uploading…' : images.length >= 5 ? 'Max 5' : '+ Add'}
         </button>
       </div>
 
@@ -85,11 +96,16 @@ const ProductImages = ({ product, onChange }) => {
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/avif"
-        onChange={(e) => upload(e.target.files?.[0])}
+        multiple
+        onChange={(e) => upload(e.target.files)}
         className="hidden"
       />
 
-      <p className="mt-2 text-xs text-muted">JPEG, PNG, WebP or AVIF · up to 5 MB · max 5 images</p>
+      <p className="mt-2 text-xs text-muted">
+        {enabled
+          ? 'JPEG, PNG, WebP or AVIF · up to 5 MB each · max 5 photos · select several at once'
+          : 'Photo uploads need Cloudinary keys on the server.'}
+      </p>
     </div>
   );
 };

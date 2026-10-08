@@ -1,6 +1,6 @@
-import Category from '../models/Category.js';
-import Product from '../models/Product.js';
-import { categories, products } from '../../seed/catalogData.js';
+import Category from '../../src/models/Category.js';
+import Product from '../../src/models/Product.js';
+import { categories, products } from './catalogData.js';
 
 /** Populates categories and products if the catalogue is empty. Idempotent. */
 const seedCatalog = async () => {

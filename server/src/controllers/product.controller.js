@@ -24,9 +24,17 @@ export const getProductBySlug = async (req, res) => {
   res.status(200).json({ success: true, product });
 };
 
+/**
+ * Fields an admin may set. ratingAvg and numReviews are computed from real
+ * reviews, slug and searchText from the name - none of them may come from a
+ * request body, or a rating could simply be typed in.
+ */
+const EDITABLE = ['name', 'brand', 'description', 'price', 'mrp', 'category', 'stock', 'attributes', 'isActive'];
+const pick = (body) => Object.fromEntries(EDITABLE.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
+
 /** @route POST /api/products  @access Admin */
 export const createProduct = async (req, res) => {
-  const product = await Product.create(req.body);
+  const product = await Product.create(pick(req.body));
   logActivity(req, 'product.create', { type: 'product', id: product._id, label: product.name });
   res.status(201).json({ success: true, product });
 };
@@ -36,9 +44,9 @@ export const updateProduct = async (req, res) => {
   const product = await Product.findById(req.params.id);
   if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
 
-  Object.assign(product, req.body);
+  Object.assign(product, pick(req.body));
   await product.save(); // save(), not findByIdAndUpdate - so hooks and validators run
-  logActivity(req, 'product.update', { type: 'product', id: product._id, label: product.name }, Object.keys(req.body).join(', '));
+  logActivity(req, 'product.update', { type: 'product', id: product._id, label: product.name }, Object.keys(pick(req.body)).join(', '));
   res.status(200).json({ success: true, product });
 };
 

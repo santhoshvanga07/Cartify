@@ -6,7 +6,7 @@ import 'dotenv/config';
 import connectDB, { disconnectDB } from './src/config/db.js';
 import app from './src/app.js';
 import ensureSuperAdmin from './src/utils/ensureSuperAdmin.js';
-import seedCatalog from './src/utils/seedCatalog.js';
+import seedCatalog from './tests/fixtures/seedCatalog.js';
 
 export const ADDRESS = {
   fullName: 'Test Buyer', phone: '9876543210', line1: '12 MG Road',
@@ -24,9 +24,11 @@ export const startHarness = async (port = 5099) => {
   let pass = 0, fail = 0;
 
   const call = async (as, method, path, body) => {
-    const headers = { 'Content-Type': 'application/json' };
+    // FormData (file uploads) sets its own multipart Content-Type and boundary.
+    const isForm = body instanceof FormData;
+    const headers = isForm ? {} : { 'Content-Type': 'application/json' };
     if (jars[as]) headers.Cookie = jars[as];
-    const r = await fetch(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const r = await fetch(base + path, { method, headers, body: isForm ? body : body ? JSON.stringify(body) : undefined });
     const t = (r.headers.getSetCookie?.() ?? []).find((c) => c.startsWith('token=') && !c.startsWith('token=;'));
     if (t && as) jars[as] = t.split(';')[0];
     const type = r.headers.get('content-type') || '';

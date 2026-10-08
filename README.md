@@ -22,17 +22,49 @@ npm install
 npm run dev                 # http://localhost:5173
 ```
 
-Leave `MONGO_URI` blank and the API starts a throwaway in-memory MongoDB, seeded with the catalogue, sample
-customers and orders, reviews, and the coupons `WELCOME10` and `FLAT500`.
+Leave `MONGO_URI` blank and the API starts a throwaway in-memory MongoDB (wiped on every restart) — handy for
+a quick look, but use MongoDB Atlas for anything you want to keep.
+
+**The store starts empty.** On every start the API makes sure the staff accounts named in `.env` exist, and
+creates nothing else. Sign in as the admin, add categories under **Dashboard → Categories**, then add
+products with specifications and up to 5 photos under **Dashboard → Products**.
 
 Every integration is optional and stays switched off until its keys are set:
 
 | Integration | Keys | Without them |
 |---|---|---|
-| Groq (AI search, compare) | `GROQ_API_KEY` | AI search falls back to keyword search |
+| Cloudinary (product photos) | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Photo uploads are disabled (the dashboard says so) |
 | Razorpay (online payment) | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Only cash on delivery is offered |
-| Cloudinary (product images) | `CLOUDINARY_*` | Generated placeholder artwork |
+| Groq (AI search, compare) | `GROQ_API_KEY` | AI search falls back to keyword search |
 | SMTP email | `SMTP_USER`, `SMTP_PASS` | Emails (including reset links) are printed to the server console |
+
+### Cloudinary
+
+1. Sign up at cloudinary.com (free plan is enough).
+2. Console → **Settings → API Keys**: copy the **Cloud name**, an **API key** and *that key's* **API secret**.
+3. Put them in `server/.env`, restart the API, and run `npm run check:cloudinary` in `server/` — it uploads and
+   deletes a test image and tells you exactly what to fix if anything is wrong.
+
+### Razorpay (test mode)
+
+1. Sign up at razorpay.com and stay in **Test Mode** (toggle at the top of the dashboard).
+2. **Account & Settings → API Keys → Generate Test Key**. Copy the Key ID (`rzp_test_…`) and the Key Secret
+   (shown only once).
+3. Put them in `server/.env` as `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` and restart. "Pay online" appears at
+   checkout; pay with Razorpay's test cards or test UPI ID `success@razorpay`. No real money moves in test mode.
+
+### Removing old demo data
+
+Earlier versions filled the database with 24 demo products, demo customers (`@example.com`), orders, reviews
+and the coupons `WELCOME10`/`FLAT500`. If you ran the app against Atlas back then, remove them with:
+
+```bash
+cd server
+npm run purge:demo          # dry run: lists what would be removed
+npm run purge:demo -- --yes # removes it
+```
+
+It only touches records it can identify as demo data; staff, settings and anything you added are kept.
 
 ## Accounts
 
@@ -88,6 +120,8 @@ npm run test:qa
 npm run test:customers
 npm run test:admin-tools    # settings, activity log, reports
 npm run test:reco
+npm run test:images         # product photos, Cloudinary stubbed
+npm run test:purge
 node _ordertest.mjs && node _carttest.mjs && node _reviewtest.mjs
 ```
 

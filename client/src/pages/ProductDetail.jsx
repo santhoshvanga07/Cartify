@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
@@ -33,6 +33,10 @@ const ProductDetail = () => {
   // Read during render, i.e. BEFORE the effect below records this visit, so
   // the shelf shows what came before rather than the page you are on.
   // Keyed on slug: recomputed on every product-to-product navigation.
+  // Which photo is showing. Reset to the cover whenever the product changes.
+  const [photo, setPhoto] = useState({ slug, index: 0 });
+  const photoIndex = photo.slug === slug ? photo.index : 0;
+
   const recent = useMemo(() => getRecentlyViewed().filter((s) => s !== slug).slice(0, 4), [slug]);
 
   useEffect(() => {
@@ -65,7 +69,8 @@ const ProductDetail = () => {
 
   if (!product) return null;
 
-  const image = product.images?.[0]?.url;
+  const images = product.images || [];
+  const image = images[photoIndex]?.url || images[0]?.url;
   const saving = product.mrp - product.price;
 
   return (
@@ -75,12 +80,32 @@ const ProductDetail = () => {
       </Link>
 
       <div className="mt-8 grid gap-12 md:grid-cols-2">
-        <div className="aspect-square overflow-hidden rounded-2xl bg-surface">
-          {image ? (
-            <img src={image} alt={product.name} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <span className="display text-7xl text-muted/30">{product.brand.charAt(0)}</span>
+        <div>
+          <div className="aspect-square overflow-hidden rounded-2xl bg-surface">
+            {image ? (
+              <img src={image} alt={product.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <span className="display text-7xl text-muted/30">{product.brand.charAt(0)}</span>
+              </div>
+            )}
+          </div>
+
+          {images.length > 1 && (
+            <div className="mt-3 flex gap-2">
+              {images.map((img, i) => (
+                <button
+                  key={img.publicId || img.url}
+                  onClick={() => setPhoto({ slug, index: i })}
+                  aria-label={`Show photo ${i + 1}`}
+                  aria-pressed={i === photoIndex}
+                  className={`h-16 w-16 overflow-hidden rounded-lg bg-surface ring-offset-2 ring-offset-page ${
+                    i === photoIndex ? 'ring-2 ring-accent' : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <img src={img.url} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
             </div>
           )}
         </div>

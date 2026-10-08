@@ -1,7 +1,7 @@
-import User from '../models/User.js';
-import Product from '../models/Product.js';
-import Order from '../models/Order.js';
-import { calculateTotals } from './pricing.js';
+import User from '../../src/models/User.js';
+import Product from '../../src/models/Product.js';
+import Order from '../../src/models/Order.js';
+import { calculateTotals } from '../../src/utils/pricing.js';
 
 const NAMES = [
   'Aarav Sharma', 'Diya Patel', 'Vihaan Reddy', 'Ananya Nair', 'Arjun Menon',

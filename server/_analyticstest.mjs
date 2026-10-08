@@ -3,8 +3,8 @@ import mongoose from 'mongoose';
 import connectDB from './src/config/db.js';
 import app from './src/app.js';
 import ensureSuperAdmin from './src/utils/ensureSuperAdmin.js';
-import seedCatalog from './src/utils/seedCatalog.js';
-import seedOrders from './src/utils/seedOrders.js';
+import seedCatalog from './tests/fixtures/seedCatalog.js';
+import seedOrders from './tests/fixtures/seedOrders.js';
 
 await connectDB(); await ensureSuperAdmin(); await seedCatalog(); await seedOrders();
 const server = app.listen(5099);

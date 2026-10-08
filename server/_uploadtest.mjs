@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import connectDB from './src/config/db.js';
 import app from './src/app.js';
 import ensureSuperAdmin from './src/utils/ensureSuperAdmin.js';
-import seedCatalog from './src/utils/seedCatalog.js';
+import seedCatalog from './tests/fixtures/seedCatalog.js';
 import Product from './src/models/Product.js';
 
 await connectDB(); await ensureSuperAdmin(); await seedCatalog();
