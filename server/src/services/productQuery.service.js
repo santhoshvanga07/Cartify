@@ -11,7 +11,7 @@ export const SORT_OPTIONS = {
 export const VALID_SORTS = Object.keys(SORT_OPTIONS);
 
 /** Escapes regex metacharacters so user text is matched literally. */
-const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Turns a plain filter object into a MongoDB query.

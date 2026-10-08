@@ -1,4 +1,6 @@
 import User from '../models/User.js';
+import Order from '../models/Order.js';
+import { escapeRegex } from '../services/productQuery.service.js';
 
 /**
  * @desc    List users, optionally filtered by role
@@ -61,9 +63,71 @@ export const updateUserRole = async (req, res) => {
 };
 
 /**
+ * @desc    Customers with their order count and lifetime spend
+ * @route   GET /api/users/customers?q=&page=
+ * @access  Admin, Super Admin
+ *
+ * One aggregation with a $lookup rather than a query per customer.
+ * Spend excludes cancelled and returned orders - money that came back.
+ */
+export const listCustomers = async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = 20;
+  const q = String(req.query.q || '').trim();
+
+  const match = { role: 'customer' };
+  if (q) {
+    const rx = new RegExp(escapeRegex(q), 'i');
+    match.$or = [{ name: rx }, { email: rx }];
+  }
+
+  const [total, customers] = await Promise.all([
+    User.countDocuments(match),
+    User.aggregate([
+      { $match: match },
+      { $sort: { createdAt: -1 } },
+      { $skip: (page - 1) * limit },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: Order.collection.name,
+          let: { uid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$user', '$$uid'] } } },
+            {
+              $group: {
+                _id: null,
+                orders: { $sum: 1 },
+                spent: {
+                  $sum: {
+                    $cond: [{ $in: ['$status', ['cancelled', 'returned']] }, 0, '$pricing.total'],
+                  },
+                },
+                lastOrderAt: { $max: '$createdAt' },
+              },
+            },
+          ],
+          as: 'stats',
+        },
+      },
+      {
+        $project: {
+          name: 1, email: 1, isActive: 1, createdAt: 1,
+          orders: { $ifNull: [{ $first: '$stats.orders' }, 0] },
+          spent: { $round: [{ $ifNull: [{ $first: '$stats.spent' }, 0] }, 2] },
+          lastOrderAt: { $first: '$stats.lastOrderAt' },
+        },
+      },
+    ]),
+  ]);
+
+  res.status(200).json({ success: true, total, page, pages: Math.ceil(total / limit), customers });
+};
+
+/**
  * @desc    Activate or suspend an account
  * @route   PATCH /api/users/:id/status
- * @access  Super Admin only
+ * @access  Admin (customers only), Super Admin (anyone)
  */
 export const updateUserStatus = async (req, res) => {
   const { isActive } = req.body;
@@ -79,6 +143,12 @@ export const updateUserStatus = async (req, res) => {
 
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  // An admin manages shoppers. Suspending a fellow admin - or the Super Admin
+  // above them - is a Super Admin decision.
+  if (req.user.role !== 'superadmin' && user.role !== 'customer') {
+    return res.status(403).json({ success: false, message: 'Only a Super Admin can suspend staff accounts' });
+  }
 
   user.isActive = isActive;
   await user.save();

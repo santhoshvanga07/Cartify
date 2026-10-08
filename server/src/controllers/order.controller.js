@@ -260,13 +260,16 @@ export const requestReturn = async (req, res) => {
   res.status(200).json({ success: true, order });
 };
 
-/** @route GET /api/orders  @access Admin */
+/** @route GET /api/orders?status=&user=  @access Admin */
 export const listAllOrders = async (req, res) => {
-  const { status } = req.query;
+  const { status, user } = req.query;
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 20);
 
-  const filter = status ? { status } : {};
+  const filter = {};
+  if (status) filter.status = String(status);
+  // One customer's history, from the customers screen.
+  if (user && mongoose.isValidObjectId(user)) filter.user = user;
   const [total, orders] = await Promise.all([
     Order.countDocuments(filter),
     Order.find(filter)

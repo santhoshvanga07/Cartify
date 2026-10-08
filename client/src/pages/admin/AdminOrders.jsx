@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../../api/axios';
 import { inr } from '../../components/ProductCard';
@@ -30,18 +30,24 @@ const AdminOrders = () => {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  // ?user=<id> arrives from the customers screen: one customer's orders.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const userFilter = searchParams.get('user');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/orders', { params: status ? { status } : {} });
+      const params = {};
+      if (status) params.status = status;
+      if (userFilter) params.user = userFilter;
+      const { data } = await api.get('/orders', { params });
       setOrders(data.orders);
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not load orders');
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, userFilter]);
 
   useEffect(() => {
     load();
@@ -62,6 +68,14 @@ const AdminOrders = () => {
 
   return (
     <div>
+      {userFilter && (
+        <p className="mb-4 flex items-center gap-3 text-sm text-body">
+          Showing orders for {orders[0]?.user?.name || 'one customer'}
+          <button onClick={() => setSearchParams({})} className="text-xs text-accent hover:underline">
+            Show all
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button
