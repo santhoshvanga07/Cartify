@@ -3,6 +3,7 @@ import PendingSignup from '../models/PendingSignup.js';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { checkEmailAddress } from '../utils/emailCheck.js';
+import { clientUrl } from '../utils/clientUrl.js';
 import sendTokenResponse, { authCookieOptions } from '../utils/sendTokenResponse.js';
 import {
   notifyWelcome, notifyPasswordReset, notifyPasswordChanged, notifyLogin, notifySignupCode,
@@ -180,7 +181,7 @@ export const forgotPassword = async (req, res) => {
   if (user) {
     const raw = user.createPasswordResetToken(RESET_MINUTES);
     await user.save({ validateBeforeSave: false });
-    const url = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${raw}`;
+    const url = `${clientUrl()}/reset-password/${raw}`;
     notifyPasswordReset(user, url, RESET_MINUTES);
   }
 

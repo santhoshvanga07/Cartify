@@ -1,12 +1,12 @@
 import User from '../models/User.js';
 import { queueEmail, esc } from './email.service.js';
+import { clientUrl } from '../utils/clientUrl.js';
 
 /**
  * Every customer-facing email in one place, so wording and tone stay
  * consistent and controllers only say WHAT happened, not how to phrase it.
  */
 
-const clientUrl = () => process.env.CLIENT_URL || 'http://localhost:5173';
 const rupees = (n) => `Rs ${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 const button = (href, label) =>

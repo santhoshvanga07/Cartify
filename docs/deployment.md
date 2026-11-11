@@ -290,7 +290,7 @@ First, look at the **logs**: Render → your service → **Logs** (API problems)
 | Render log: `MONGO_URI is missing or invalid` / `MongoDB connection FAILED` | Connection string wrong, password still has `<db_password>`, or Network Access not set | Redo Part 1 steps 4–6; paste the corrected value into Render |
 | Render log: `bad auth : authentication failed` | Wrong database password, or it contains special characters | Atlas → Database Access → Edit user → autogenerate a new password → update `MONGO_URI` |
 | Render log: `JWT_SECRET is not set` | Variable missing | Add `JWT_SECRET` (Part 2.2) |
-| Browser console: `blocked by CORS policy` | `CLIENT_URL` on Render does not exactly match the Vercel address | Part 4 — no `/` at the end, `https://`, the main address |
+| Page says **"Network Error"**, or browser console says `blocked by CORS policy` | `CLIENT_URL` on Render does not match the Vercel address (Render's Logs show `CORS: refused a request from …` with the address to use) | Part 4: set `CLIENT_URL` to exactly what is in your browser's address bar, e.g. `https://team-cartifyy.vercel.app`. Several sites: separate them with commas |
 | Site loads but shows no products / spins forever | `VITE_API_URL` wrong or missing, or the API is asleep | Open `/api/health` to wake it; fix `VITE_API_URL` and **Redeploy** on Vercel |
 | Super Admin gets "Invalid credentials" | Typo in `SEED_SUPERADMIN_PASSWORD`, or the account was created earlier with a different password | The account is created only the first time. Use **Forgot password** on the sign-in page |
 | Sign in works, then you look signed out again | Safari / Incognito blocking the cookie | Use Chrome or Edge in a normal window |

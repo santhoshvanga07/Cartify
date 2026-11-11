@@ -3,6 +3,7 @@ import app from './app.js';
 import connectDB from './config/db.js';
 import { loadSettings } from './services/settings.service.js';
 import ensureSuperAdmin from './utils/ensureSuperAdmin.js';
+import { allowedOrigins } from './utils/clientUrl.js';
 import ensureOthersCategory from './utils/ensureOthersCategory.js';
 import User from './models/User.js';
 import { expireUnpaidOrders } from './controllers/order.controller.js';
@@ -49,6 +50,8 @@ const startServer = async () => {
   app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode`);
     console.log(`http://localhost:${PORT}/api/health`);
+    // Shown in Render's Logs: the first thing to check when the site says "Network Error".
+    console.log(`Accepting requests from: ${allowedOrigins().join(', ')}`);
   });
 };
 

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { checkOrigin } from './utils/clientUrl.js';
 
 import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
@@ -39,7 +40,7 @@ app.use(helmet());
 // 2. Who is allowed to call this API from a browser.
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: checkOrigin, // the site(s) in CLIENT_URL - see utils/clientUrl.js
     credentials: true, // required for cookies to cross origins
     // Lets the browser read the report filename on a cross-origin download.
     exposedHeaders: ['Content-Disposition'],
