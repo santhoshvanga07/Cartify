@@ -90,7 +90,7 @@ await call('y', 'POST', '/api/cart', { productId: p._id, quantity: 1 });
 r = await call('y', 'POST', '/api/orders', { shippingAddress: { ...ADDRESS, fullName: '<b>Kim</b>' } });
 await tick();
 const orderMail = lastMailTo('kim@test.com');
-expect('order confirmation sent', orderMail?.subject, `Order ${r.body.order.orderNumber} confirmed`);
+expect('order placed email sent', orderMail?.subject, `Order ${r.body.order.orderNumber} placed`);
 expect('  lists the items', orderMail?.text.includes(p.name), true);
 expect('  shows the total', orderMail?.text.includes('Total: Rs'), true);
 expect('  shows the delivery address', orderMail?.text.includes('Delivering to:'), true);

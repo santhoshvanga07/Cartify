@@ -53,6 +53,70 @@ Rules:
  * The model never sees the catalogue and never names a product, so it cannot
  * hallucinate stock we do not carry.
  */
+/* ------------------------------------------------------------------
+ * Fallback understanding, for when the AI is off or failing.
+ * Not clever - but "trekking shoes under 3000" must not search for the
+ * words "under" and "3000", or a working catalogue looks empty.
+ * ------------------------------------------------------------------ */
+
+const FILLER = new Set(
+  ('i im i\'m want need looking look for a an the some any show me find get buy with and or to in of on my please '
+    + 'something good nice best cheap cheapest affordable budget under below less than within upto up above over more '
+    + 'max maximum min minimum around about price priced cost costing rs inr rupees that is are which can you')
+    .split(' ')
+);
+
+/** "3000", "3,000", "3k", "1.5 lakh", "₹2999" -> rupees */
+const amount = (num, unit = '') => {
+  const n = Number(String(num).replace(/,/g, ''));
+  const u = unit.toLowerCase();
+  return u === 'k' || u === 'thousand' ? n * 1000 : u === 'l' || u === 'lakh' || u === 'lac' ? n * 100000 : n;
+};
+const MONEY = String.raw`(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d+)?)\s*(k|thousand|lakh|lac|l)?\b`;
+
+export const fallbackFilters = (query, categories = []) => {
+  let text = ` ${query.toLowerCase()} `;
+  const out = {};
+
+  const between = text.match(new RegExp(String.raw`between\s+${MONEY}\s+(?:and|to|-)\s+${MONEY}`, 'i'));
+  if (between) {
+    out.minPrice = amount(between[1], between[2]);
+    out.maxPrice = amount(between[3], between[4]);
+    text = text.replace(between[0], ' ');
+  }
+  const max = text.match(new RegExp(String.raw`(?:under|below|less than|within|up ?to|max(?:imum)?|cheaper than|<)\s*${MONEY}`, 'i'));
+  if (max) {
+    out.maxPrice = amount(max[1], max[2]);
+    text = text.replace(max[0], ' ');
+  }
+  const min = text.match(new RegExp(String.raw`(?:above|over|more than|min(?:imum)?|from|>)\s*${MONEY}`, 'i'));
+  if (min) {
+    out.minPrice = amount(min[1], min[2]);
+    text = text.replace(min[0], ' ');
+  }
+
+  // A category named in the request ("laptops", "laptop", "audio") becomes the category filter.
+  for (const c of categories) {
+    const name = c.name.toLowerCase();
+    const forms = [name, name.replace(/s$/, ''), c.slug];
+    const hit = forms.find((f) => f && new RegExp(`\\b${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?\\b`).test(text));
+    if (hit) {
+      out.category = c.slug;
+      text = text.replace(new RegExp(`\\b${hit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?\\b`, 'g'), ' ');
+      break;
+    }
+  }
+
+  if (/\bin stock\b|\bavailable\b/.test(text)) out.inStockOnly = true;
+
+  const words = text
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w && !FILLER.has(w) && !/^\d+$/.test(w) && w !== 'stock');
+  if (words.length) out.q = words.join(' ');
+  return out;
+};
+
 export const aiSearch = async (req, res) => {
   const query = String(req.body?.query || '').trim();
 
@@ -83,11 +147,11 @@ export const aiSearch = async (req, res) => {
      * is exactly what a shopper typing in the normal search box would get.
      */
     degraded = true;
-    data = { q: query };
+    data = fallbackFilters(query, categories);
   }
 
   // The model may answer with JSON null or a bare value - treat that as "no filters".
-  if (!data || typeof data !== 'object') data = { q: query };
+  if (!data || typeof data !== 'object') data = fallbackFilters(query, categories);
 
   // Untrusted output in, safe filter out.
   const filters = sanitizeFilters(data, {
@@ -105,7 +169,7 @@ export const aiSearch = async (req, res) => {
     interpretation: filters,
     degraded, // the UI can quietly say "showing keyword results"
     reply: degraded
-      ? `Showing keyword results for "${query}".`
+      ? `Here is what matches "${query}".`
       : typeof data.reply === 'string' && data.reply.length < 300
       ? data.reply
       : `Here is what I found for "${query}".`,
@@ -159,11 +223,24 @@ export const aiCompare = async (req, res) => {
       .map(([k, v]) => `${k} = ${v}`)
       .join('; ')}.`;
 
-  const { data, usage } = await chatJSON({
-    system: comparePrompt,
-    user: `${describe(a, 'A')}\n\n${describe(b, 'B')}`,
-    maxTokens: 800,
-  });
+  /**
+   * The side-by-side facts need no AI - they are our own data. The AI only
+   * adds pros, cons and a verdict. If it is not configured (or fails), the
+   * shopper still gets the comparison table instead of an error.
+   */
+  let data;
+  let usage;
+  try {
+    ({ data, usage } = await chatJSON({
+      system: comparePrompt,
+      user: `${describe(a, 'A')}\n\n${describe(b, 'B')}`,
+      maxTokens: 800,
+    }));
+  } catch (err) {
+    if (err.statusCode !== 503) console.error(`AI compare failed: ${err.message}`);
+    return res.status(200).json({ success: true, products: { A: a, B: b }, comparison: null, aiUnavailable: true });
+  }
+  if (!data || typeof data !== 'object') data = {};
 
   const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 4) : []);
 

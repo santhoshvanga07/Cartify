@@ -91,6 +91,59 @@ const Compare = () => {
   const A = comparison?.products?.A;
   const B = comparison?.products?.B;
 
+  /**
+   * The facts, side by side. Needs no AI - it is the products' own data - so
+   * it is shown even when the AI is switched off. The better value in each
+   * row is highlighted where "better" is obvious (lower price, higher rating).
+   */
+  const factsTable = () => {
+    const specs = (p) => p.attributes || {};
+    const specNames = [...new Set([...Object.keys(specs(A)), ...Object.keys(specs(B))])];
+    const off = (p) => (p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0);
+    const rows = [
+      ['Price', inr(A.price), inr(B.price), A.price === B.price ? null : A.price < B.price ? 'A' : 'B'],
+      ['MRP', inr(A.mrp), inr(B.mrp), null],
+      ['Discount', `${off(A)}%`, `${off(B)}%`, off(A) === off(B) ? null : off(A) > off(B) ? 'A' : 'B'],
+      [
+        'Rating',
+        A.numReviews ? `${A.ratingAvg} / 5 (${A.numReviews})` : 'No reviews yet',
+        B.numReviews ? `${B.ratingAvg} / 5 (${B.numReviews})` : 'No reviews yet',
+        A.ratingAvg === B.ratingAvg ? null : A.ratingAvg > B.ratingAvg ? 'A' : 'B',
+      ],
+      ['Availability', A.stock > 0 ? 'In stock' : 'Sold out', B.stock > 0 ? 'In stock' : 'Sold out', null],
+      ['Category', A.category?.name || '—', B.category?.name || '—', null],
+      ...specNames.map((k) => [k, specs(A)[k] || '—', specs(B)[k] || '—', null]),
+    ];
+    const cell = (value, side, better) =>
+      `py-2.5 pr-4 text-sm ${better === side ? 'font-medium text-accent' : 'text-ink'}`;
+    return (
+      <div className="card mt-8 overflow-x-auto">
+        <table className="w-full min-w-[480px] text-left">
+          <thead>
+            <tr className="border-b border-line">
+              <th className="w-1/4 py-2 text-xs font-normal uppercase tracking-widest text-muted">Side by side</th>
+              <th className="py-2 pr-4 text-sm font-medium text-ink">
+                <Link to={`/products/${A.slug}`} className="hover:text-accent">{A.name}</Link>
+              </th>
+              <th className="py-2 pr-4 text-sm font-medium text-ink">
+                <Link to={`/products/${B.slug}`} className="hover:text-accent">{B.name}</Link>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, a, b, better]) => (
+              <tr key={label} className="border-b border-line last:border-0">
+                <td className="py-2.5 pr-4 text-xs text-muted">{label}</td>
+                <td className={cell(a, 'A', better)}>{a}</td>
+                <td className={cell(b, 'B', better)}>{b}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const column = (product, side, verdict) => (
     <div className={`card ${verdict === side ? 'ring-2 ring-accent' : ''}`}>
       <div className="flex items-start justify-between gap-3">
@@ -174,6 +227,17 @@ const Compare = () => {
             <p className="text-xs uppercase tracking-widest text-accent">Recommendation</p>
             <p className="mt-2 text-sm text-ink">{c.recommendation}</p>
           </div>
+        </>
+      )}
+
+      {A && B && (
+        <>
+          {!c && (
+            <p className="mt-12 text-sm text-body">
+              The AI verdict is not available right now, so here are the facts side by side.
+            </p>
+          )}
+          {factsTable()}
         </>
       )}
     </div>

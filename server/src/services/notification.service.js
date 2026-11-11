@@ -171,8 +171,8 @@ export const notifyOrderPlaced = (order, user) => {
     to: user.email,
     subject: awaitingPayment
       ? `Order ${order.orderNumber} placed - complete your payment`
-      : `Order ${order.orderNumber} confirmed`,
-    title: awaitingPayment ? 'Almost done' : 'Order confirmed',
+      : `Order ${order.orderNumber} placed`, // "confirmed" comes later, when the store confirms it
+    title: awaitingPayment ? 'Almost done' : 'Order placed',
     html: `<p>${esc(intro)}</p>${orderDetailsHtml(order)}
       ${button(orderUrl(order), awaitingPayment ? 'Complete payment' : 'Track your order')}`,
     text: `${intro}\n\n${orderDetailsText(order)}\n\nTrack it: ${orderUrl(order)}`,

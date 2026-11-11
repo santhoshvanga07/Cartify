@@ -96,6 +96,20 @@ await call('shopper', 'POST', '/api/cart', { productId: p._id, quantity: 1 });
 r = await call('shopper', 'POST', '/api/orders', { shippingAddress: ADDRESS, couponCode: 'ONCEONLY' });
 expect('the coupon works again after cancelling', r.status, 201, `"${r.body.message}"`);
 
+console.log('\n--- AI features still work without an AI key ---');
+const hadKey = process.env.GROQ_API_KEY;
+delete process.env.GROQ_API_KEY;
+r = await call(null, 'POST', '/api/ai/search', { query: 'trekking shoes under 3000' });
+expect('assistant understands "under 3000" without AI', r.body.interpretation?.maxPrice, 3000);
+expect('  and finds the trekking shoes', r.body.products?.some((x) => x.name === 'Wildcraft Trek Shoes'), true);
+r = await call(null, 'POST', '/api/ai/search', { query: 'laptop below 50k' });
+expect('  "laptop below 50k" -> laptops category', r.body.interpretation?.category, 'laptops');
+r = await call(null, 'POST', '/api/ai/compare', { slugA: 'dell-inspiron-15', slugB: 'hp-pavilion-14' });
+expect('compare answers without AI', r.status, 200);
+expect('  with both products for the side-by-side table', Boolean(r.body.products?.A && r.body.products?.B), true);
+expect('  and says the AI verdict is unavailable', r.body.aiUnavailable, true);
+if (hadKey) process.env.GROQ_API_KEY = hadKey;
+
 console.log('\n--- analytics ---');
 r = await call('sa', 'GET', '/api/analytics/sales?days=30');
 expect('sales series has every one of the 30 days', r.body.series?.length, 30);
