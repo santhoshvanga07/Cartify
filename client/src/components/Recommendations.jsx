@@ -29,9 +29,17 @@ export const ProductShelf = ({
       .get(endpoint, { params })
       .then(({ data }) => {
         // Guard against a stale response landing after the user navigated away.
-        if (!cancelled) setProducts(data.products);
+        if (cancelled) return;
+        if (!Array.isArray(data?.products)) {
+          console.error(`Invalid recommendation response from ${endpoint}: expected a products array.`);
+          setProducts([]);
+          return;
+        }
+        setProducts(data.products);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (!cancelled) console.error(`Failed to load recommendations from ${endpoint}.`, error);
+      });
     return () => {
       cancelled = true;
     };
