@@ -4,13 +4,15 @@ import { getSettings } from '../services/settings.service.js';
 import {
   isRazorpayConfigured, startPayment, verifyRazorpaySignature, refundRazorpayPayment,
 } from '../services/payment.service.js';
-import { razorpayAttempts } from './order.controller.js';
+import { razorpayAttempts, confirmPlacedOrder } from './order.controller.js';
 
 /** Only an online order that is still open and not yet paid can take a payment. */
 const isAwaitingPayment = (order) =>
   order.paymentMethod === 'razorpay'
   && ['pending', 'failed'].includes(order.paymentStatus)
-  && ['placed', 'confirmed'].includes(order.status);
+  // awaiting_payment: a checkout waiting for this payment. placed/confirmed:
+  // an unpaid online order from before checkouts waited for payment.
+  && ['awaiting_payment', 'placed', 'confirmed'].includes(order.status);
 
 /** @route GET /api/payments/config  @access Public */
 export const paymentConfig = (req, res) => {
@@ -111,20 +113,37 @@ export const verifyPayment = async (req, res) => {
     await order.save();
     return res.status(409).json({
       success: false,
-      message: order.status === 'cancelled'
+      message: order.status === 'abandoned'
+        ? 'Your payment session had expired, so no order was placed. The payment is being refunded - please check out again.'
+        : order.status === 'cancelled'
         ? 'This order was cancelled before your payment arrived. The payment is being refunded.'
         : 'This order was already paid. Your extra payment is being refunded.',
       order,
     });
   }
 
+  // A checkout becomes an order only now, with the money in. The status is
+  // claimed atomically so a double-reported payment cannot place it twice.
+  const wasCheckout = order.status === 'awaiting_payment';
+  if (wasCheckout) {
+    const claimed = await Order.updateOne({ _id: order._id, status: 'awaiting_payment' }, { $set: { status: 'placed' } });
+    if (claimed.modifiedCount !== 1) {
+      return res.status(409).json({ success: false, message: 'This order was just updated - please refresh' });
+    }
+    order.status = 'placed';
+  }
+
   order.paymentStatus = 'paid';
   order.paymentDetails.razorpayPaymentId = razorpay_payment_id;
   order.paymentDetails.razorpaySignature = razorpay_signature;
   order.paymentDetails.paidAt = new Date();
-  order.statusHistory.push({ status: order.status, note: `Paid online (${razorpay_payment_id})` });
+  order.statusHistory.push({
+    status: order.status,
+    note: wasCheckout ? `Order placed (paid online, ${razorpay_payment_id})` : `Paid online (${razorpay_payment_id})`,
+  });
   await order.save();
-  notifyPaymentReceived(order, order.user);
+  if (wasCheckout) await confirmPlacedOrder(order, order.user);
+  else notifyPaymentReceived(order, order.user);
 
   res.status(200).json({ success: true, order });
 };

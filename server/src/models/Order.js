@@ -38,6 +38,11 @@ const addressSchema = new mongoose.Schema(
 );
 
 export const ORDER_STATUSES = [
+  // Not orders yet: an online checkout waiting for its payment, and one whose
+  // payment never came. They hold stock while the payment window is open but
+  // are hidden from the customer's orders, the admin list, analytics and reports.
+  'awaiting_payment',
+  'abandoned',
   'placed',
   'confirmed',
   'shipped',
@@ -52,6 +57,11 @@ export const ORDER_STATUSES = [
  * payment - actually paid. An abandoned Razorpay checkout is not revenue.
  * Shared by analytics, reports, customer spend and the recommendation shelves.
  */
+/** Checkouts that never became orders (see ORDER_STATUSES). */
+export const NOT_YET_ORDERS = ['awaiting_payment', 'abandoned'];
+/** Query filter: real orders only. */
+export const REAL_ORDERS = { status: { $nin: NOT_YET_ORDERS } };
+
 export const COUNTS_AS_SALE = {
   status: { $nin: ['cancelled', 'returned'] },
   $nor: [{ paymentMethod: 'razorpay', paymentStatus: { $ne: 'paid' } }],
@@ -59,6 +69,8 @@ export const COUNTS_AS_SALE = {
 
 /** Which transitions an admin is allowed to make. Prevents delivered -> placed. */
 export const ALLOWED_TRANSITIONS = {
+  awaiting_payment: [], // only a successful payment (or the expiry sweep) moves it
+  abandoned: [],
   placed: ['confirmed', 'cancelled'],
   confirmed: ['shipped', 'cancelled'],
   shipped: ['delivered'],

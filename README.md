@@ -144,7 +144,7 @@ It only touches records it can identify as demo data; staff, settings and anythi
 | 07 | Cart | Server-priced, stock-checked |
 | 08 | Wishlist | Save, move to bag, count in the navbar |
 | 09 | Checkout | Address validation, coupons, GST and shipping computed on the server |
-| 10 | Payment | Cash on delivery; Razorpay with server-side signature verification, retry and refunds; unpaid online orders cancel themselves after 30 minutes (after checking with Razorpay that no money arrived) |
+| 10 | Payment | Cash on delivery; Razorpay with server-side signature verification, retry and refunds. An online order is placed only once its payment succeeds: until then the items are held but nothing is listed, emailed or removed from the bag, and an unpaid checkout is let go after 30 minutes (after checking with Razorpay that no money arrived) |
 | 11 | Orders | Status tracking with courier, tracking number/link and expected delivery, cancel, return requests within the return window, GST tax invoice (print / PDF) |
 | 12 | Review & Rating | Verified-purchase badge, helpful votes, reporting |
 | 13 | AI Shopping Assistant | Chat that turns plain English into a real catalogue search |

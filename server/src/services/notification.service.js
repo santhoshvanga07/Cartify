@@ -178,18 +178,16 @@ const orderDetailsText = (order) =>
 const orderUrl = (order) => `${clientUrl()}/orders/${order._id}`;
 
 export const notifyOrderPlaced = (order, user) => {
-  const awaitingPayment = order.paymentMethod === 'razorpay' && order.paymentStatus !== 'paid';
-  const intro = awaitingPayment
-    ? `Thanks ${user.name}! Your order is placed. Complete the online payment to confirm it - unpaid orders are cancelled after 30 minutes.`
+  const paidOnline = order.paymentMethod === 'razorpay' && order.paymentStatus === 'paid';
+  const intro = paidOnline
+    ? `Thanks ${user.name}! We have your order and your payment of ${rupees(order.pricing.total)}. We will let you know when it ships.`
     : `Thanks ${user.name}! We have your order and will let you know when it ships.`;
   queueEmail({
     to: user.email,
-    subject: awaitingPayment
-      ? `Order ${order.orderNumber} placed - complete your payment`
-      : `Order ${order.orderNumber} placed`, // "confirmed" comes later, when the store confirms it
-    title: awaitingPayment ? 'Almost done' : 'Order placed',
+    subject: `Order ${order.orderNumber} placed`, // "confirmed" comes later, when the store confirms it
+    title: 'Order placed',
     html: `<p>${esc(intro)}</p>${orderDetailsHtml(order)}
-      ${button(orderUrl(order), awaitingPayment ? 'Complete payment' : 'Track your order')}`,
+      ${button(orderUrl(order), 'Track your order')}${paidOnline ? button(`${orderUrl(order)}/invoice`, 'View invoice') : ''}`,
     text: `${intro}\n\n${orderDetailsText(order)}\n\nTrack it: ${orderUrl(order)}`,
   });
 };

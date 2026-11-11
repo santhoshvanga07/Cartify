@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
-import Order, { ALLOWED_TRANSITIONS } from '../models/Order.js';
+import Order, { ALLOWED_TRANSITIONS, NOT_YET_ORDERS } from '../models/Order.js';
+import Product from '../models/Product.js';
 import Cart from '../models/Cart.js';
 import { calculateTotals } from '../utils/pricing.js';
 import { getSettings } from '../services/settings.service.js';
@@ -44,6 +45,10 @@ export const createOrder = async (req, res) => {
 
   const addressProblem = checkAddress(shippingAddress);
   if (addressProblem) return res.status(400).json({ success: false, message: addressProblem });
+
+  // An earlier online checkout that was never paid still holds stock (and maybe
+  // a coupon). This new checkout replaces it, so let go of it first.
+  await abandonPendingCheckouts(req.user.id);
 
   const cart = await Cart.findOne({ user: req.user.id }).populate('items.product');
   const lines = (cart?.items || []).filter((i) => i.product && i.product.isActive);
@@ -106,7 +111,6 @@ export const createOrder = async (req, res) => {
    * check and drive stock below zero.)
    */
   const reserved = [];
-  const runningLow = [];
   for (const item of items) {
     const after = await takeStock(item.product, item.variant, item.quantity);
     if (!after) {
@@ -119,12 +123,10 @@ export const createOrder = async (req, res) => {
       });
     }
     reserved.push(item);
-    // Crossed the low-stock line with THIS order? Tell staff once, not on every later sale.
-    const left = after.stockFor(item.variant);
-    if (left <= LOW_STOCK && left + item.quantity > LOW_STOCK) runningLow.push({ ...item, left });
   }
 
   const pricing = calculateTotals(lineItems, { discount });
+  const isOnline = paymentMethod === 'razorpay';
 
   let order;
   try {
@@ -143,8 +145,13 @@ export const createOrder = async (req, res) => {
       ...(coupon && { coupon: { code: coupon.code, discount: pricing.discount, couponId: coupon._id } }),
       paymentMethod,
       paymentStatus: 'pending',
-      status: 'placed',
-      statusHistory: [{ status: 'placed', note: `Order placed (${paymentMethod.toUpperCase()})` }],
+      // Online: NOT an order yet - it becomes one when the payment succeeds.
+      status: isOnline ? 'awaiting_payment' : 'placed',
+      statusHistory: [
+        isOnline
+          ? { status: 'awaiting_payment', note: 'Waiting for online payment' }
+          : { status: 'placed', note: 'Order placed (COD)' },
+      ],
     });
   } catch (err) {
     // The coupon and stock were taken before the order existed - give them back.
@@ -153,38 +160,27 @@ export const createOrder = async (req, res) => {
     throw err;
   }
 
-  // The cart has become an order; empty it.
-  await Cart.findOneAndUpdate({ user: req.user.id }, { items: [] });
-
   // "Save this address for next time" - best effort: a full address book must not fail the order.
   if (saveAddress === true) await saveAddressFor(req.user.id, shippingAddress).catch(() => {});
 
-  /**
-   * Online payment: the order exists (stock is held) but is unpaid. We hand
-   * the browser a Razorpay order for the SERVER's total. If the Razorpay call
-   * fails the order still stands - the shopper can retry payment from the
-   * order page, or cancel it.
-   */
-  let razorpay = null;
-  if (paymentMethod === 'razorpay') {
-    try {
-      razorpay = await startPayment(order);
-    } catch (err) {
-      console.error(`Razorpay order creation failed for ${order.orderNumber}: ${err.message}`);
-    }
+  if (!isOnline) {
+    await confirmPlacedOrder(order, req.user);
+    return res.status(201).json({ success: true, order, razorpay: null });
   }
 
-  notifyOrderPlaced(order, req.user);
-  for (const low of runningLow) {
-    const what = low.variant ? `${low.name} (${low.variant})` : low.name;
-    notifyStaff(
-      `Low stock: ${what}`,
-      low.left === 0
-        ? `${what} has just sold out. Restock it from Dashboard > Products.`
-        : `Only ${low.left} of ${what} left after order ${order.orderNumber}. Restock it from Dashboard > Products.`
-    );
+  /**
+   * Online payment: the stock is held, but nothing is "placed" yet - the bag
+   * is untouched, no emails go out and the order is not listed anywhere. The
+   * browser gets a Razorpay order for the SERVER's total; when it pays,
+   * verifyPayment places the order. If the window is closed, the hold is let
+   * go after 30 minutes or at the shopper's next checkout.
+   */
+  let razorpay = null;
+  try {
+    razorpay = await startPayment(order);
+  } catch (err) {
+    console.error(`Razorpay order creation failed for ${order.orderNumber}: ${err.message}`);
   }
-  notifyStaff(`New order ${order.orderNumber}`, `${req.user.name} placed ${order.orderNumber} for Rs ${order.pricing.total}.`);
 
   res.status(201).json({ success: true, order, razorpay });
 };
@@ -263,9 +259,68 @@ const claimTransition = async (order, from, to) => {
   return result.modifiedCount === 1;
 };
 
+/**
+ * Everything that happens when an order really is placed - straight away for
+ * cash on delivery, and only after a successful payment for online orders:
+ * the bought lines leave the bag, the customer and staff are emailed, and
+ * staff hear if this sale pushed anything to low stock.
+ */
+export const confirmPlacedOrder = async (order, user) => {
+  // Only the lines that were bought (the bag may have changed during payment).
+  await Cart.updateOne(
+    { user: order.user._id ?? order.user },
+    {
+      $pull: {
+        items: {
+          $or: order.items.map((i) => ({ product: i.product, variant: i.variant ? i.variant : { $in: ['', null] } })),
+        },
+      },
+    }
+  );
+
+  notifyOrderPlaced(order, user);
+  const paid = order.paymentStatus === 'paid' ? ' (paid online)' : '';
+  notifyStaff(`New order ${order.orderNumber}`, `${user.name} placed ${order.orderNumber} for Rs ${order.pricing.total}${paid}.`);
+
+  // Crossed the low-stock line with THIS order? Tell staff once, not on every later sale.
+  for (const item of order.items) {
+    const product = await Product.findById(item.product);
+    if (!product) continue;
+    const left = product.stockFor(item.variant);
+    if (left <= LOW_STOCK && left + item.quantity > LOW_STOCK) {
+      const what = item.variant ? `${item.name} (${item.variant})` : item.name;
+      notifyStaff(
+        `Low stock: ${what}`,
+        left === 0
+          ? `${what} has just sold out. Restock it from Dashboard > Products.`
+          : `Only ${left} of ${what} left after order ${order.orderNumber}. Restock it from Dashboard > Products.`
+      );
+    }
+  }
+};
+
+/**
+ * An online checkout whose payment never came becomes "abandoned": its stock
+ * and coupon go back. No email - the customer never saw an order. If Razorpay
+ * did capture money for it, releaseOrder refunds it.
+ */
+const abandonCheckout = async (order) => {
+  if (!(await claimTransition(order, 'awaiting_payment', 'abandoned'))) return false;
+  order.status = 'abandoned';
+  order.statusHistory.push({ status: 'abandoned', note: 'Payment not completed - no order was placed' });
+  await releaseOrder(order);
+  await order.save();
+  return true;
+};
+
+const abandonPendingCheckouts = async (userId) => {
+  const pending = await Order.find({ user: userId, status: 'awaiting_payment' });
+  for (const order of pending) await abandonCheckout(order);
+};
+
 /** @route GET /api/orders/my  @access Private */
 export const getMyOrders = async (req, res) => {
-  const orders = await Order.find({ user: req.user.id }).sort({ createdAt: -1 });
+  const orders = await Order.find({ user: req.user.id, status: { $nin: NOT_YET_ORDERS } }).sort({ createdAt: -1 });
   res.status(200).json({ success: true, count: orders.length, orders });
 };
 
@@ -370,8 +425,8 @@ export const listAllOrders = async (req, res) => {
   // Clamped on both sides: a negative limit would become a negative skip and a 500.
   const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit)) || 20));
 
-  const filter = {};
-  if (status) filter.status = String(status);
+  // Checkouts that never became orders are hidden unless asked for by name.
+  const filter = status ? { status: String(status) } : { status: { $nin: NOT_YET_ORDERS } };
   // One customer's history, from the customers screen.
   if (user && mongoose.isValidObjectId(user)) filter.user = user;
   const [total, orders] = await Promise.all([
@@ -505,28 +560,48 @@ export const expireUnpaidOrders = async (maxAgeMinutes = 30) => {
   const stale = await Order.find({
     paymentMethod: 'razorpay',
     paymentStatus: { $in: ['pending', 'failed'] },
-    status: 'placed',
+    // awaiting_payment: a checkout not paid yet. placed: an online order from
+    // before checkouts waited for payment (older data).
+    status: { $in: ['awaiting_payment', 'placed'] },
     createdAt: { $lt: cutoff },
   })
     .populate('user', 'name email')
     .limit(50);
 
-  let cancelled = 0;
+  let released = 0;
   for (const order of stale) {
     const attempts = razorpayAttempts(order);
     const captured = attempts.length ? await findCapturedPayments(attempts) : [];
-    if (captured === null) continue;
+    if (captured === null) continue; // Razorpay unreachable: ask again next time, never guess
 
     if (captured.length) {
+      // The money did arrive (the browser never told us): record it.
+      const wasCheckout = order.status === 'awaiting_payment';
+      if (wasCheckout && !(await claimTransition(order, 'awaiting_payment', 'placed'))) continue;
       order.paymentStatus = 'paid';
       order.paymentDetails.razorpayPaymentId = captured[0];
       order.paymentDetails.paidAt = new Date();
-      order.statusHistory.push({ status: order.status, note: `Paid online (${captured[0]}) - confirmed with Razorpay` });
+      if (wasCheckout) {
+        order.status = 'placed';
+        order.statusHistory.push({ status: 'placed', note: `Order placed (paid online, ${captured[0]} - confirmed with Razorpay)` });
+      } else {
+        order.statusHistory.push({ status: order.status, note: `Paid online (${captured[0]}) - confirmed with Razorpay` });
+      }
       await order.save();
-      if (order.user) notifyPaymentReceived(order, order.user);
+      if (order.user) {
+        if (wasCheckout) await confirmPlacedOrder(order, order.user);
+        else notifyPaymentReceived(order, order.user);
+      }
       continue;
     }
 
+    if (order.status === 'awaiting_payment') {
+      // Never became an order: quietly let go of the stock and coupon.
+      if (await abandonCheckout(order)) released++;
+      continue;
+    }
+
+    // Older data: an online order that was placed but never paid.
     if (!(await claimTransition(order, 'placed', 'cancelled'))) continue;
     order.status = 'cancelled';
     order.statusHistory.push({
@@ -536,7 +611,7 @@ export const expireUnpaidOrders = async (maxAgeMinutes = 30) => {
     await releaseOrder(order);
     await order.save();
     if (order.user) notifyStatusChange(order, order.user);
-    cancelled++;
+    released++;
   }
-  return cancelled;
+  return released;
 };

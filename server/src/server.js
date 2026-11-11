@@ -39,7 +39,7 @@ const startServer = async () => {
   // Every 5 minutes: cancel online orders left unpaid, so their stock is sold again.
   const sweep = () =>
     expireUnpaidOrders(UNPAID_ORDER_MINUTES)
-      .then((n) => n && console.log(`Cancelled ${n} unpaid online order(s)`))
+      .then((n) => n && console.log(`Released ${n} unpaid online checkout(s)`))
       .catch((err) => console.error(`Unpaid-order sweep failed: ${err.message}`));
   setInterval(sweep, 5 * 60 * 1000).unref();
   sweep();

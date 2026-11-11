@@ -8,7 +8,8 @@ import crypto from 'node:crypto';
  * also makes it obvious what the security actually rests on: the signature.
  */
 
-const API = 'https://api.razorpay.com/v1';
+// RAZORPAY_API_URL exists only so automated tests can point at a fake Razorpay; leave it unset.
+const API = process.env.RAZORPAY_API_URL || 'https://api.razorpay.com/v1';
 
 const authHeader = () =>
   `Basic ${Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`;

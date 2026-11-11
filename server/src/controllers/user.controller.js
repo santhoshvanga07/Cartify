@@ -1,5 +1,5 @@
 import User from '../models/User.js';
-import Order from '../models/Order.js';
+import Order, { NOT_YET_ORDERS } from '../models/Order.js';
 import { escapeRegex } from '../services/productQuery.service.js';
 import { logActivity } from '../services/activity.service.js';
 
@@ -98,7 +98,7 @@ export const listCustomers = async (req, res) => {
           from: Order.collection.name,
           let: { uid: '$_id' },
           pipeline: [
-            { $match: { $expr: { $eq: ['$user', '$$uid'] } } },
+            { $match: { $expr: { $eq: ['$user', '$$uid'] }, status: { $nin: NOT_YET_ORDERS } } },
             {
               $group: {
                 _id: null,

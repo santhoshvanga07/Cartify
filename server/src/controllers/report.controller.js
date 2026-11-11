@@ -1,4 +1,4 @@
-import Order, { COUNTS_AS_SALE } from '../models/Order.js';
+import Order, { COUNTS_AS_SALE, REAL_ORDERS } from '../models/Order.js';
 import Product from '../models/Product.js';
 import { sendCsv } from '../utils/csv.js';
 import { logActivity } from '../services/activity.service.js';
@@ -88,7 +88,7 @@ export const salesReport = async (req, res) => {
 export const ordersReport = async (req, res) => {
   const { from, to } = dateRange(req);
 
-  const orders = await Order.find({ createdAt: { $gte: from, $lte: to } })
+  const orders = await Order.find({ ...REAL_ORDERS, createdAt: { $gte: from, $lte: to } })
     .populate('user', 'name email')
     .sort({ createdAt: -1 })
     .limit(5000)

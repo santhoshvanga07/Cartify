@@ -15,9 +15,12 @@ const NEXT = {
   return_requested: ['returned', 'delivered'],
   returned: [],
   cancelled: [],
+  awaiting_payment: [],
+  abandoned: [],
 };
 
-const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'return_requested', 'returned', 'cancelled'];
+// The last two are online checkouts that are not orders (yet): useful to see abandoned payments.
+const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'return_requested', 'returned', 'cancelled', 'awaiting_payment', 'abandoned'];
 
 /** An online order is only fulfilled once paid; until then the server allows cancelling only. */
 const movesFor = (o) =>

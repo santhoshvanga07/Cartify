@@ -1,4 +1,4 @@
-import Order, { COUNTS_AS_SALE } from '../models/Order.js';
+import Order, { COUNTS_AS_SALE, REAL_ORDERS } from '../models/Order.js';
 import User from '../models/User.js';
 import Product from '../models/Product.js';
 
@@ -38,7 +38,7 @@ export const overview = async (req, res) => {
     User.countDocuments({ role: 'customer' }),
     Product.countDocuments({ isActive: true }),
     Product.countDocuments({ isActive: true, stock: { $lte: 5 } }),
-    Order.find().sort({ createdAt: -1 }).limit(5).populate('user', 'name email'),
+    Order.find(REAL_ORDERS).sort({ createdAt: -1 }).limit(5).populate('user', 'name email'),
   ]);
 
   // aggregate() returns an array; it is empty when there are no orders yet.
@@ -214,6 +214,7 @@ export const customerGrowth = async (req, res) => {
  */
 export const orderStatusBreakdown = async (req, res) => {
   const rows = await Order.aggregate([
+    { $match: REAL_ORDERS },
     { $group: { _id: '$status', count: { $sum: 1 } } },
     { $sort: { count: -1 } },
   ]);

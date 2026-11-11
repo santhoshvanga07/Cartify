@@ -107,11 +107,16 @@ const Checkout = () => {
       })
     );
     if (!placeOrder.fulfilled.match(result)) return toast.error(result.payload);
-    dispatch(fetchCart()); // the server emptied it
 
     const order = result.payload;
-    if (order.paymentMethod !== 'razorpay') return toast.success('Order placed');
-    if (!order.razorpay) return toast.warn('Order placed, but payment could not start. Pay from the order page.');
+    if (order.paymentMethod !== 'razorpay') {
+      dispatch(fetchCart()); // the server took the bought lines out of the bag
+      return toast.success('Order placed');
+    }
+    // Online: nothing is placed until the payment succeeds. The bag is untouched.
+    if (!order.razorpay) {
+      return toast.error('Online payment could not start, so your order has not been placed. Please try again, or choose cash on delivery.');
+    }
 
     setPaying(true);
     try {
@@ -119,12 +124,14 @@ const Checkout = () => {
         onAttemptFailed: (m) => toast.error(`${m} - you can try again in the payment window`),
       });
       const verified = await dispatch(verifyPayment({ id: order._id, payment }));
-      if (verifyPayment.fulfilled.match(verified)) toast.success('Payment received');
-      else toast.error(verified.payload);
+      if (verifyPayment.fulfilled.match(verified)) {
+        toast.success('Payment received - your order is placed');
+        dispatch(fetchCart()); // the bought lines left the bag
+      } else toast.error(`${verified.payload} Your order has not been placed.`);
     } catch (err) {
-      // Closing the window is not an error - the order waits for payment.
-      if (err?.dismissed) toast.info('Payment not completed. You can pay from the order page.');
-      else toast.error(err.message);
+      // Closing the window: no order, nothing lost - the bag is still there.
+      if (err?.dismissed) toast.info('Payment not completed, so your order has not been placed. Your bag is unchanged - you can try again.');
+      else toast.error(`${err.message}. Your order has not been placed.`);
     } finally {
       setPaying(false);
     }

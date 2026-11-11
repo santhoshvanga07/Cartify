@@ -85,7 +85,8 @@ const orderSlice = createSlice({
     builder
       .addCase(placeOrder.fulfilled, (state, action) => {
         state.loading = false;
-        state.placed = action.payload; // drives the confirmation screen
+        // An online checkout is not an order until it is paid: no "Thank you" screen yet.
+        if (action.payload.status !== 'awaiting_payment') state.placed = action.payload; // drives the confirmation screen
       })
       .addCase(fetchMyOrders.fulfilled, (state, action) => {
         state.loading = false;
@@ -120,7 +121,8 @@ const orderSlice = createSlice({
       .addCase(verifyPayment.fulfilled, (state, action) => {
         state.loading = false;
         if (state.current?._id === action.payload._id) state.current = action.payload;
-        if (state.placed?._id === action.payload._id) state.placed = action.payload;
+        // Paid: the checkout is now a placed order - show the confirmation.
+        if (action.payload.status !== 'awaiting_payment') state.placed = action.payload;
       })
       // Someone else is (or nobody is) signed in now: forget the last person's orders.
       .addMatcher(isUserChange, () => orderSlice.getInitialState())

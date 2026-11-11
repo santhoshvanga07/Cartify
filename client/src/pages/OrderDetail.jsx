@@ -58,7 +58,7 @@ const OrderDetail = () => {
     now < new Date(deliveredAt).getTime() + returnWindowDays * 86400000;
   const awaitingPayment =
     order.paymentMethod === 'razorpay' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunded'
-    && order.status !== 'cancelled';
+    && !['cancelled', 'abandoned'].includes(order.status);
 
   const handlePay = async () => {
     setPaying(true);
@@ -148,7 +148,11 @@ const OrderDetail = () => {
       {awaitingPayment && isOwner && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-accent-soft px-4 py-3">
           <p className="text-sm text-ink">
-            {order.paymentStatus === 'failed' ? 'Your last payment attempt failed.' : 'This order is awaiting payment.'}
+            {order.status === 'awaiting_payment'
+              ? 'Not placed yet - complete the payment to place this order.'
+              : order.paymentStatus === 'failed'
+              ? 'Your last payment attempt failed.'
+              : 'This order is awaiting payment.'}
           </p>
           <button onClick={handlePay} disabled={paying} className="btn btn-primary !py-1.5">
             {paying ? 'Opening…' : `Pay ${inr(order.pricing.total)}`}

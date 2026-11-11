@@ -7,6 +7,8 @@ import usePageTitle from '../hooks/usePageTitle';
 
 /* One place that decides how a status looks, so it is consistent everywhere. */
 export const STATUS_LABEL = {
+  awaiting_payment: 'Awaiting payment - not placed yet',
+  abandoned: 'Not placed (payment not completed)',
   placed: 'Placed',
   confirmed: 'Confirmed',
   shipped: 'Shipped',
@@ -19,7 +21,7 @@ export const STATUS_LABEL = {
 export const statusClass = (s) =>
   s === 'delivered'
     ? 'text-accent'
-    : s === 'cancelled' || s === 'returned'
+    : s === 'cancelled' || s === 'returned' || s === 'abandoned'
     ? 'text-red-600'
     : 'text-body';
 
