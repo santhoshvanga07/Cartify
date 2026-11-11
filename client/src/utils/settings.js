@@ -21,6 +21,8 @@ const DEFAULTS = {
 
 let cache = null;
 let pending = null;
+// Every mounted useSettings(), so a saved change reaches components already on screen (e.g. the navbar).
+const listeners = new Set();
 
 const load = () => {
   pending ??= api
@@ -37,6 +39,7 @@ const load = () => {
 export const invalidateSettings = () => {
   cache = null;
   pending = null;
+  load().then((s) => listeners.forEach((notify) => notify(s)));
 };
 
 export const useSettings = () => {
@@ -45,8 +48,10 @@ export const useSettings = () => {
   useEffect(() => {
     let alive = true;
     load().then((s) => alive && setSettings(s));
+    listeners.add(setSettings);
     return () => {
       alive = false;
+      listeners.delete(setSettings);
     };
   }, []);
 

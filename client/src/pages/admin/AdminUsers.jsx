@@ -156,8 +156,25 @@ const AdminUsers = () => {
                     </button>
                   )}
                   {u.role === 'admin' && (
-                    <button onClick={() => setRole(u, 'customer')} className="text-body hover:text-ink">
-                      Remove admin
+                    <>
+                      <button
+                        onClick={() =>
+                          window.confirm(
+                            `Make ${u.name} a Super Admin? They will be able to manage admins, roles and platform settings.`
+                          ) && setRole(u, 'superadmin')
+                        }
+                        className="text-body hover:text-ink"
+                      >
+                        Make Super Admin
+                      </button>
+                      <button onClick={() => setRole(u, 'customer')} className="text-body hover:text-ink">
+                        Remove admin
+                      </button>
+                    </>
+                  )}
+                  {u.role === 'superadmin' && (
+                    <button onClick={() => setRole(u, 'admin')} className="text-body hover:text-ink">
+                      Make admin
                     </button>
                   )}
                   <button

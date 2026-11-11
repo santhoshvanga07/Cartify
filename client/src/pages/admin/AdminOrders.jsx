@@ -17,7 +17,13 @@ const NEXT = {
   cancelled: [],
 };
 
-const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'return_requested', 'cancelled'];
+const FILTERS = ['', 'placed', 'confirmed', 'shipped', 'delivered', 'return_requested', 'returned', 'cancelled'];
+
+/** An online order is only fulfilled once paid; until then the server allows cancelling only. */
+const movesFor = (o) =>
+  o.paymentMethod === 'razorpay' && o.paymentStatus !== 'paid'
+    ? (NEXT[o.status] || []).filter((s) => s === 'cancelled')
+    : NEXT[o.status] || [];
 
 /* Most moves read as "Mark shipped"; a return decision reads better as a verdict. */
 const actionLabel = (from, to) =>
@@ -28,6 +34,9 @@ const actionLabel = (from, to) =>
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   // ?user=<id> arrives from the customers screen: one customer's orders.
@@ -37,17 +46,19 @@ const AdminOrders = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = { page, limit: 25 };
       if (status) params.status = status;
       if (userFilter) params.user = userFilter;
       const { data } = await api.get('/orders', { params });
       setOrders(data.orders);
+      setPages(Math.max(1, data.pages));
+      setTotal(data.total);
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not load orders');
     } finally {
       setLoading(false);
     }
-  }, [status, userFilter]);
+  }, [status, userFilter, page]);
 
   useEffect(() => {
     load();
@@ -71,7 +82,12 @@ const AdminOrders = () => {
       {userFilter && (
         <p className="mb-4 flex items-center gap-3 text-sm text-body">
           Showing orders for {orders[0]?.user?.name || 'one customer'}
-          <button onClick={() => setSearchParams({})} className="text-xs text-accent hover:underline">
+          <button
+            onClick={() => {
+              setSearchParams({});
+              setPage(1);
+            }}
+            className="text-xs text-accent hover:underline">
             Show all
           </button>
         </p>
@@ -80,7 +96,10 @@ const AdminOrders = () => {
         {FILTERS.map((f) => (
           <button
             key={f || 'all'}
-            onClick={() => setStatus(f)}
+            onClick={() => {
+              setStatus(f);
+              setPage(1);
+            }}
             className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
               status === f ? 'bg-ink text-white' : 'bg-surface text-body hover:text-ink'
             }`}
@@ -131,9 +150,13 @@ const AdminOrders = () => {
               <p className="mt-2 text-xs text-ink">Return reason: {o.returnReason}</p>
             )}
 
-            {NEXT[o.status]?.length > 0 && (
+            {o.paymentMethod === 'razorpay' && o.paymentStatus !== 'paid' && ['placed', 'confirmed'].includes(o.status) && (
+              <p className="mt-2 text-xs text-muted">Awaiting online payment - it can be shipped once paid.</p>
+            )}
+
+            {movesFor(o).length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
-                {NEXT[o.status].map((next) => (
+                {movesFor(o).map((next) => (
                   <button
                     key={next}
                     disabled={busyId === o._id}
@@ -148,6 +171,22 @@ const AdminOrders = () => {
           </div>
         ))}
       </div>
+
+      {pages > 1 && (
+        <div className="mt-6 flex items-center justify-between text-sm text-body">
+          <span>
+            Page {page} of {pages} · {total} orders
+          </span>
+          <div className="flex gap-2">
+            <button className="btn btn-ghost !px-3 !py-1.5 !text-xs" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
+              Previous
+            </button>
+            <button className="btn btn-ghost !px-3 !py-1.5 !text-xs" disabled={page >= pages || loading} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

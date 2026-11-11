@@ -1,34 +1,67 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchProducts } from '../features/products/productSlice';
 import { aiCompare, clearComparison } from '../features/ai/aiSlice';
 import { inr } from '../components/ProductCard';
+import api from '../api/axios';
 
-const Compare = () => {
-  const [params] = useSearchParams();
-  const [slugA, setSlugA] = useState(params.get('a') || '');
-  const [slugB, setSlugB] = useState(params.get('b') || '');
+/**
+ * Search-as-you-type product picker. A fixed list could only ever offer the
+ * first 50 products (the API's page limit); searching reaches all of them.
+ */
+const ProductPicker = ({ label, value, onChange }) => {
+  const [q, setQ] = useState('');
+  const [options, setOptions] = useState([]);
+  const [selected, setSelected] = useState(null);
 
-  const dispatch = useDispatch();
-  const { items } = useSelector((state) => state.products);
-  const { comparison, loading, error } = useSelector((state) => state.ai);
+  // Name of a product chosen through the URL (?a=slug), which may not be in the results.
+  useEffect(() => {
+    if (!value) return;
+    let alive = true;
+    api.get(`/products/${value}`).then(({ data }) => alive && setSelected(data.product)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [value]);
 
   useEffect(() => {
-    dispatch(fetchProducts({ limit: 50 }));
-    return () => dispatch(clearComparison());
-  }, [dispatch]);
+    let alive = true;
+    const timer = setTimeout(() => {
+      api
+        .get('/products', { params: { q: q.trim() || undefined, limit: 20 } })
+        .then(({ data }) => alive && setOptions(data.products))
+        .catch(() => {});
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [q]);
 
-  const run = () => {
-    if (slugA && slugB && slugA !== slugB) dispatch(aiCompare({ slugA, slugB }));
-  };
+  const current = selected?.slug === value ? selected : null;
+  const list = current && !options.some((o) => o.slug === current.slug) ? [current, ...options] : options;
 
-  const picker = (value, onChange, label) => (
+  return (
     <div className="flex-1">
       <label className="label">{label}</label>
-      <select className="field" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Choose a product</option>
-        {items.map((p) => (
+      <input
+        className="field"
+        placeholder="Search by name or brand"
+        aria-label={`${label}: search`}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      <select
+        className="field mt-2"
+        aria-label={label}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setSelected(list.find((p) => p.slug === e.target.value) || null);
+        }}
+      >
+        <option value="">{list.length ? 'Choose a product' : 'No matches'}</option>
+        {list.map((p) => (
           <option key={p._id} value={p.slug}>
             {p.name} — {inr(p.price)}
           </option>
@@ -36,6 +69,23 @@ const Compare = () => {
       </select>
     </div>
   );
+};
+
+const Compare = () => {
+  const [params] = useSearchParams();
+  const [slugA, setSlugA] = useState(params.get('a') || '');
+  const [slugB, setSlugB] = useState(params.get('b') || '');
+
+  const dispatch = useDispatch();
+  const { comparison, loading, error } = useSelector((state) => state.ai);
+
+  useEffect(() => () => dispatch(clearComparison()), [dispatch]);
+
+  const run = () => {
+    if (slugA && slugB && slugA !== slugB) dispatch(aiCompare({ slugA, slugB }));
+  };
+
+  const picker = (value, onChange, label) => <ProductPicker label={label} value={value} onChange={onChange} />;
 
   const c = comparison?.comparison;
   const A = comparison?.products?.A;

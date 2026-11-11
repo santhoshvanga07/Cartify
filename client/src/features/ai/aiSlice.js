@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../api/axios';
+import { isUserChange } from '../auth/userChanged';
 
 const msg = (err) => err.response?.data?.message || err.message || 'Something went wrong';
 
@@ -86,7 +87,9 @@ const aiSlice = createSlice({
       .addCase(aiCompare.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
-      });
+      })
+      // A different person: the previous one's chat must not be shown to them.
+      .addMatcher(isUserChange, (state) => ({ ...aiSlice.getInitialState(), enabled: state.enabled }));
   },
 });
 

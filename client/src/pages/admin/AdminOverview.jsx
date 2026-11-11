@@ -26,6 +26,8 @@ const AdminOverview = () => {
   const [sales, setSales] = useState([]);
   const [top, setTop] = useState([]);
   const [cats, setCats] = useState([]);
+  const [growth, setGrowth] = useState([]);
+  const [statuses, setStatuses] = useState([]);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -34,12 +36,16 @@ const AdminOverview = () => {
       api.get('/analytics/sales?days=30'),
       api.get('/analytics/top-products'),
       api.get('/analytics/category-sales'),
+      api.get('/analytics/customer-growth'),
+      api.get('/analytics/order-status'),
     ])
-      .then(([o, s, t, c]) => {
+      .then(([o, s, t, c, g, st]) => {
         setData(o.data);
         setSales(s.data.series);
         setTop(t.data.products);
         setCats(c.data.categories);
+        setGrowth(g.data.series);
+        setStatuses(st.data.statuses);
       })
       .catch((e) => setError(e.response?.data?.message || 'Could not load analytics'));
   }, []);
@@ -152,6 +158,54 @@ const AdminOverview = () => {
               </li>
             ))}
           </ol>
+        </div>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-2">
+        {/* Customer growth */}
+        <div className="card">
+          <h2 className="text-sm font-medium text-ink">New customers per month</h2>
+          {growth.length === 0 ? (
+            <p className="mt-4 text-sm text-muted">No customers yet.</p>
+          ) : (
+            <div className="mt-5 h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={growth} margin={{ left: -20, right: 8, top: 4 }}>
+                  <CartesianGrid stroke="var(--color-line)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value, name) => [value, name === 'newCustomers' ? 'New customers' : name]}
+                    labelFormatter={(month) => {
+                      const row = growth.find((r) => r.month === month);
+                      return row ? `${month} · ${row.total} customers in total` : month;
+                    }}
+                  />
+                  <Bar dataKey="newCustomers" fill="var(--color-accent)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Orders by status */}
+        <div className="card">
+          <h2 className="text-sm font-medium text-ink">Orders by status</h2>
+          {statuses.length === 0 ? (
+            <p className="mt-4 text-sm text-muted">No orders yet.</p>
+          ) : (
+            <ul className="mt-4 space-y-2">
+              {statuses.map((s) => (
+                <li key={s.status} className="flex items-baseline justify-between text-sm">
+                  <Link to="/admin/orders" className="capitalize text-body hover:text-ink">
+                    {s.status.replace('_', ' ')}
+                  </Link>
+                  <span className="text-ink">{s.count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 

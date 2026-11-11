@@ -19,7 +19,7 @@ const date = (d) =>
 const Invoice = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
-  const { current: order, error } = useSelector((state) => state.orders);
+  const { current: order, fetchError: error } = useSelector((state) => state.orders);
   // Seller details are platform settings the Super Admin maintains.
   const seller = useSettings();
 

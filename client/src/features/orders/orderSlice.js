@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../api/axios';
+import { isUserChange } from '../auth/userChanged';
 
 const msg = (err) => err.response?.data?.message || err.message || 'Something went wrong';
 
@@ -70,7 +71,11 @@ export const verifyPayment = createAsyncThunk(
 
 const orderSlice = createSlice({
   name: 'orders',
-  initialState: { list: [], current: null, placed: null, loading: false, error: null },
+  /**
+   * fetchError: the order (or order list) could not be LOADED - the page shows it instead of the order.
+   * error: an action failed (cancel, return, payment) - shown as a toast, the page stays.
+   */
+  initialState: { list: [], current: null, placed: null, loading: false, error: null, fetchError: null },
   reducers: {
     clearPlaced: (state) => {
       state.placed = null;
@@ -86,6 +91,18 @@ const orderSlice = createSlice({
         state.loading = false;
         state.list = action.payload;
       })
+      .addCase(fetchOrder.pending, (state) => {
+        state.fetchError = null;
+      })
+      .addCase(fetchMyOrders.pending, (state) => {
+        state.fetchError = null;
+      })
+      .addCase(fetchOrder.rejected, (state, action) => {
+        state.fetchError = action.payload;
+      })
+      .addCase(fetchMyOrders.rejected, (state, action) => {
+        state.fetchError = action.payload;
+      })
       .addCase(fetchOrder.fulfilled, (state, action) => {
         state.loading = false;
         state.current = action.payload;
@@ -98,12 +115,15 @@ const orderSlice = createSlice({
       .addCase(requestReturn.fulfilled, (state, action) => {
         state.loading = false;
         state.current = action.payload;
+        state.list = state.list.map((o) => (o._id === action.payload._id ? action.payload : o));
       })
       .addCase(verifyPayment.fulfilled, (state, action) => {
         state.loading = false;
         if (state.current?._id === action.payload._id) state.current = action.payload;
         if (state.placed?._id === action.payload._id) state.placed = action.payload;
       })
+      // Someone else is (or nobody is) signed in now: forget the last person's orders.
+      .addMatcher(isUserChange, () => orderSlice.getInitialState())
       // One matcher pair instead of repeating pending/rejected four times.
       .addMatcher(
         (a) => a.type.startsWith('orders/') && a.type.endsWith('/pending'),

@@ -14,7 +14,9 @@ const TRACK = ['placed', 'confirmed', 'shipped', 'delivered'];
 const OrderDetail = () => {
   const { id } = useParams();
   const dispatch = useDispatch();
-  const { current: order, loading, error } = useSelector((state) => state.orders);
+  const { current, loading, fetchError } = useSelector((state) => state.orders);
+  // Only the order for THIS url: never show the previous order (or the previous user's) while loading.
+  const order = current?._id === id ? current : null;
   const user = useSelector((state) => state.auth.user);
   const [returning, setReturning] = useState(false);
   const [reason, setReason] = useState('');
@@ -28,12 +30,10 @@ const OrderDetail = () => {
     dispatch(fetchOrder(id));
   }, [id, dispatch]);
 
-  if (loading && !order) return <p className="px-6 py-20 text-center text-sm text-muted">Loading…</p>;
-
-  if (error) {
+  if (fetchError) {
     return (
       <div className="mx-auto max-w-lg px-6 py-24 text-center">
-        <p className="display text-3xl text-ink">{error}</p>
+        <p className="display text-3xl text-ink">{fetchError}</p>
         <Link to="/orders" className="mt-6 inline-block text-sm text-accent hover:underline">
           Your orders
         </Link>
@@ -41,13 +41,14 @@ const OrderDetail = () => {
     );
   }
 
-  if (!order) return null;
+  if (!order) return <p className="px-6 py-20 text-center text-sm text-muted">Loading…</p>;
 
   const canCancel = ['placed', 'confirmed'].includes(order.status);
   const stepIndex = TRACK.indexOf(order.status);
   const isCancelled = ['cancelled', 'returned'].includes(order.status);
 
-  const isOwner = order.user?._id === user?._id;
+  // order.user is usually populated ({ _id, name }), but accept a bare id too.
+  const isOwner = (order.user?._id ?? order.user) === user?._id;
   const deliveredAt = order.deliveredAt || order.statusHistory.findLast((h) => h.status === 'delivered')?.at;
   const returnOpen =
     order.status === 'delivered' &&
@@ -61,10 +62,15 @@ const OrderDetail = () => {
     setPaying(true);
     try {
       const { data } = await api.post(`/payments/${order._id}/retry`);
-      const payment = await openRazorpay(data.razorpay, user, `Order ${order.orderNumber}`);
+      const payment = await openRazorpay(data.razorpay, user, `Order ${order.orderNumber}`, {
+        onAttemptFailed: (m) => toast.error(`${m} - you can try again in the payment window`),
+      });
       const result = await dispatch(verifyPayment({ id: order._id, payment }));
       if (verifyPayment.fulfilled.match(result)) toast.success('Payment received');
-      else toast.error(result.payload);
+      else {
+        toast.error(result.payload);
+        dispatch(fetchOrder(order._id)); // show what the server recorded (e.g. a refund)
+      }
     } catch (err) {
       if (!err?.dismissed) toast.error(err.response?.data?.message || err.message);
     } finally {
@@ -207,7 +213,7 @@ const OrderDetail = () => {
               <dd className="font-medium text-ink">{inr(order.pricing.total)}</dd>
             </div>
             <p className="pt-1 text-xs text-muted">
-              {order.paymentMethod === 'cod' ? 'Cash on delivery' : 'Paid online'} ·{' '}
+              {order.paymentMethod === 'cod' ? 'Cash on delivery' : 'Online payment'} ·{' '}
               {order.paymentStatus}
             </p>
           </dl>
@@ -242,6 +248,7 @@ const OrderDetail = () => {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
+            minLength={5}
             maxLength={500}
             required
             className="field"

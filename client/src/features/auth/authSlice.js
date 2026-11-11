@@ -30,9 +30,13 @@ export const loginUser = createAsyncThunk(
   }
 );
 
-export const logoutUser = createAsyncThunk('auth/logout', async () => {
-  await api.post('/auth/logout');
-  return null;
+export const logoutUser = createAsyncThunk('auth/logout', async (_, { rejectWithValue }) => {
+  try {
+    await api.post('/auth/logout');
+    return null;
+  } catch (err) {
+    return rejectWithValue(msg(err));
+  }
 });
 
 /* Runs on app start: the cookie may still be valid from a previous visit. */
@@ -67,6 +71,11 @@ const authSlice = createSlice({
     setUser: (state, action) => {
       state.user = action.payload;
       state.initialised = true;
+    },
+    // The server answered 401: the cookie expired, or the password was changed
+    // on another device. Treat the visitor as signed out.
+    sessionExpired: (state) => {
+      state.user = null;
     },
   },
   extraReducers: (builder) => {
@@ -109,5 +118,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setUser } = authSlice.actions;
+export const { clearError, setUser, sessionExpired } = authSlice.actions;
 export default authSlice.reducer;

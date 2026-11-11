@@ -14,7 +14,13 @@ const Navbar = () => {
   const { storeName } = useSettings();
 
   const handleLogout = async () => {
-    await dispatch(logoutUser());
+    const result = await dispatch(logoutUser());
+    // If the request failed the cookie is still there - saying "signed out"
+    // would be untrue on a shared computer.
+    if (!logoutUser.fulfilled.match(result)) {
+      toast.error(`Could not sign out: ${result.payload || 'network error'}. Please try again.`);
+      return;
+    }
     toast.success('Signed out');
     navigate('/');
   };

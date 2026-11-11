@@ -20,7 +20,10 @@ const Products = () => {
   const [filters, setFilters] = useState({
     q: '',
     category: searchParams.get('category') || '',
+    minPrice: '',
     maxPrice: '',
+    minRating: '',
+    inStockOnly: '',
     sort: 'newest',
     page: 1,
   });
@@ -35,7 +38,7 @@ const Products = () => {
   }, [dispatch]);
 
   /* Debounce: wait 350ms after the last change so typing "laptop" sends one
-     request instead of six, and responses cannot arrive out of order. */
+     request instead of six. (Out-of-order answers are dropped in productSlice.) */
   useEffect(() => {
     const timer = setTimeout(() => dispatch(fetchProducts(filters)), 350);
     return () => clearTimeout(timer);
@@ -45,7 +48,9 @@ const Products = () => {
   const set = (key, value) =>
     setFilters((f) => ({ ...f, [key]: value, page: key === 'page' ? value : 1 }));
 
-  const activeCount = [filters.q, filters.category, filters.maxPrice].filter(Boolean).length;
+  const activeCount = [
+    filters.q, filters.category, filters.minPrice, filters.maxPrice, filters.minRating, filters.inStockOnly,
+  ].filter(Boolean).length;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
@@ -94,15 +99,52 @@ const Products = () => {
           </div>
 
           <div>
-            <label className="label">Max price</label>
-            <input
-              className="field"
-              type="number"
-              placeholder="Any"
-              value={filters.maxPrice}
-              onChange={(e) => set('maxPrice', e.target.value)}
-            />
+            <label className="label">Price (₹)</label>
+            <div className="flex gap-2">
+              <input
+                className="field"
+                type="number"
+                min="0"
+                placeholder="Min"
+                aria-label="Minimum price"
+                value={filters.minPrice}
+                onChange={(e) => set('minPrice', e.target.value)}
+              />
+              <input
+                className="field"
+                type="number"
+                min="0"
+                placeholder="Max"
+                aria-label="Maximum price"
+                value={filters.maxPrice}
+                onChange={(e) => set('maxPrice', e.target.value)}
+              />
+            </div>
           </div>
+
+          <div>
+            <label className="label" htmlFor="shop-rating">Rating</label>
+            <select
+              id="shop-rating"
+              className="field"
+              value={filters.minRating}
+              onChange={(e) => set('minRating', e.target.value)}
+            >
+              <option value="">Any</option>
+              <option value="4">4★ and up</option>
+              <option value="3">3★ and up</option>
+              <option value="2">2★ and up</option>
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-body">
+            <input
+              type="checkbox"
+              checked={filters.inStockOnly === 'true'}
+              onChange={(e) => set('inStockOnly', e.target.checked ? 'true' : '')}
+            />
+            In stock only
+          </label>
 
           <div>
             <label className="label">Sort</label>
@@ -121,7 +163,7 @@ const Products = () => {
 
           {activeCount > 0 && (
             <button
-              onClick={() => setFilters({ q: '', category: '', maxPrice: '', sort: 'newest', page: 1 })}
+              onClick={() => setFilters({ q: '', category: '', minPrice: '', maxPrice: '', minRating: '', inStockOnly: '', sort: 'newest', page: 1 })}
               className="text-xs text-muted underline underline-offset-4 hover:text-ink"
             >
               Clear filters

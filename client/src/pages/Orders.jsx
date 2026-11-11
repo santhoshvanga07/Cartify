@@ -67,7 +67,9 @@ const Orders = () => {
                   {' · '}
                   {o.items.length} {o.items.length === 1 ? 'item' : 'items'}
                   {' · '}
-                  {o.paymentMethod === 'cod' ? 'Cash on delivery' : 'Paid online'}
+                  {o.paymentMethod === 'cod'
+                    ? 'Cash on delivery'
+                    : o.paymentStatus === 'paid' ? 'Paid online' : `Online payment ${o.paymentStatus}`}
                 </p>
               </div>
               <div className="text-right">

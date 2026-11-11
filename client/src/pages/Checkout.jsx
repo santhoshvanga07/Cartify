@@ -25,7 +25,8 @@ const Checkout = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { items, totals } = useSelector((state) => state.cart);
-  const { loading, error, placed } = useSelector((state) => state.orders);
+  const { loading, placed } = useSelector((state) => state.orders);
+  const cartLoading = useSelector((state) => state.cart.loading);
   const user = useSelector((state) => state.auth.user);
 
   useEffect(() => {
@@ -33,9 +34,9 @@ const Checkout = () => {
     if (user) setAddress((a) => ({ ...a, fullName: a.fullName || user.name }));
   }, [dispatch, user]);
 
-  useEffect(() => {
-    if (error) toast.error(error);
-  }, [error]);
+  // Leaving the page (by any link) ends the confirmation. Without this, the
+  // next visit to /checkout would show the old "Thank you" screen.
+  useEffect(() => () => dispatch(clearPlaced()), [dispatch]);
 
   // Online payment is offered only when the server has Razorpay keys.
   useEffect(() => {
@@ -78,7 +79,7 @@ const Checkout = () => {
     const result = await dispatch(
       placeOrder({ shippingAddress: address, paymentMethod, couponCode: applied?.coupon.code })
     );
-    if (!placeOrder.fulfilled.match(result)) return;
+    if (!placeOrder.fulfilled.match(result)) return toast.error(result.payload);
     dispatch(fetchCart()); // the server emptied it
 
     const order = result.payload;
@@ -87,7 +88,9 @@ const Checkout = () => {
 
     setPaying(true);
     try {
-      const payment = await openRazorpay(order.razorpay, user, `Order ${order.orderNumber}`);
+      const payment = await openRazorpay(order.razorpay, user, `Order ${order.orderNumber}`, {
+        onAttemptFailed: (m) => toast.error(`${m} - you can try again in the payment window`),
+      });
       const verified = await dispatch(verifyPayment({ id: order._id, payment }));
       if (verifyPayment.fulfilled.match(verified)) toast.success('Payment received');
       else toast.error(verified.payload);
@@ -138,6 +141,11 @@ const Checkout = () => {
         </div>
       </div>
     );
+  }
+
+  // On a refresh the bag is still loading - do not flash "your bag is empty".
+  if (items.length === 0 && cartLoading) {
+    return <p className="px-6 py-24 text-center text-sm text-muted">Loading…</p>;
   }
 
   if (items.length === 0) {

@@ -187,6 +187,11 @@ const Reviews = ({ slug }) => {
                 </span>
               )}
             </div>
+            {r.isHidden && (
+              <p className="mt-2 text-xs text-amber-700">
+                Hidden after reports while our team reviews it - only you can see it. You can still edit or delete it.
+              </p>
+            )}
 
             <p className="mt-1 text-xs text-muted">
               {r.user?.name} ·{' '}

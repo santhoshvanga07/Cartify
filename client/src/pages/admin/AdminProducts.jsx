@@ -26,6 +26,11 @@ const AdminProducts = () => {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
+  // The dashboard's own listing: paginated, and removed products can be shown and restored.
+  const [status, setStatus] = useState('active');
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [specs, setSpecs] = useState(toRows());
   const [uploadsEnabled, setUploadsEnabled] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -40,13 +45,15 @@ const AdminProducts = () => {
 
   const load = useCallback(async () => {
     const [p, c] = await Promise.all([
-      api.get('/products', { params: { limit: 50, q: q || undefined } }),
+      api.get('/products/admin/list', { params: { q: q || undefined, status, page } }),
       api.get('/categories'),
     ]);
     setProducts(p.data.products);
+    setPages(Math.max(1, p.data.pages));
+    setTotal(p.data.total);
     setCategories(c.data.categories);
     setLoaded(true);
-  }, [q]);
+  }, [q, status, page]);
 
   useEffect(() => {
     const timer = setTimeout(() => load().catch(() => toast.error('Could not load products')), 300);
@@ -86,6 +93,13 @@ const AdminProducts = () => {
         stock: Number(form.stock),
         attributes: toAttributes(specs),
       };
+      // The stock the form started from. The server applies the admin's change
+      // as a difference, so sales made while the form was open are not undone.
+      if (editingId && editingProduct) payload.stockWas = editingProduct.stock;
+      if (!Number.isInteger(payload.stock) || payload.stock < 0) {
+        setSaving(false);
+        return toast.error('Stock must be a whole number, 0 or more');
+      }
       if (Number(payload.mrp) < Number(payload.price)) {
         setSaving(false);
         return toast.error('MRP cannot be lower than the selling price');
@@ -112,6 +126,7 @@ const AdminProducts = () => {
   };
 
   const remove = async (p) => {
+    if (!window.confirm(`Remove "${p.name}" from the store? You can restore it later from "Removed".`)) return;
     // Soft delete on the server - orders keep pointing at it.
     try {
       await api.delete(`/products/${p._id}`);
@@ -119,6 +134,16 @@ const AdminProducts = () => {
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not remove');
+    }
+  };
+
+  const restore = async (p) => {
+    try {
+      await api.put(`/products/${p._id}`, { isActive: true });
+      toast.success(`${p.name} is back in the store`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not restore');
     }
   };
 
@@ -149,8 +174,24 @@ const AdminProducts = () => {
           className="field max-w-xs"
           placeholder="Search products"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(1);
+          }}
         />
+        <select
+          className="field max-w-[10rem]"
+          aria-label="Which products"
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="active">In the store</option>
+          <option value="removed">Removed</option>
+          <option value="all">All</option>
+        </select>
         <button
           onClick={() => (showForm ? cancel() : setShowForm(true))}
           className={`btn ${showForm ? 'btn-ghost' : 'btn-primary'}`}
@@ -268,7 +309,7 @@ const AdminProducts = () => {
         </form>
       )}
 
-      {loaded && products.length === 0 && !q && (
+      {loaded && products.length === 0 && !q && status === 'active' && (
         <p className="mt-8 text-sm text-muted">No products yet. Use “Add product” to list your first one.</p>
       )}
 
@@ -290,6 +331,7 @@ const AdminProducts = () => {
               </Link>
               <p className="text-xs text-muted">
                 {p.brand} · {p.category?.name}
+                {!p.isActive && <span className="ml-2 text-red-600">Removed</span>}
               </p>
             </div>
 
@@ -305,11 +347,31 @@ const AdminProducts = () => {
 
             <div className="flex gap-3 text-xs">
               <button onClick={() => startEdit(p)} className="text-body hover:text-ink">Edit</button>
-              <button onClick={() => remove(p)} className="text-body hover:text-red-600">Remove</button>
+              {p.isActive ? (
+                <button onClick={() => remove(p)} className="text-body hover:text-red-600">Remove</button>
+              ) : (
+                <button onClick={() => restore(p)} className="text-accent hover:underline">Restore</button>
+              )}
             </div>
           </div>
         ))}
       </div>
+
+      {pages > 1 && (
+        <div className="mt-6 flex items-center justify-between text-sm text-body">
+          <span>
+            Page {page} of {pages} · {total} products
+          </span>
+          <div className="flex gap-2">
+            <button className="btn btn-ghost !px-3 !py-1.5 !text-xs" disabled={page <= 1} onClick={() => setPage((n) => n - 1)}>
+              Previous
+            </button>
+            <button className="btn btn-ghost !px-3 !py-1.5 !text-xs" disabled={page >= pages} onClick={() => setPage((n) => n + 1)}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

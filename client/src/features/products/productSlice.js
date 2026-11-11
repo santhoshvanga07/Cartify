@@ -57,16 +57,21 @@ const productSlice = createSlice({
     pages: 0,
     loading: false,
     error: null,
+    // The newest list request. An older, slower response ("lap") must not
+    // overwrite the results of a newer search ("laptop bag").
+    listRequestId: null,
   },
   reducers: {},
   extraReducers: (builder) => {
     builder
       // list
-      .addCase(fetchProducts.pending, (state) => {
+      .addCase(fetchProducts.pending, (state, action) => {
         state.loading = true;
         state.error = null;
+        state.listRequestId = action.meta.requestId;
       })
       .addCase(fetchProducts.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.listRequestId) return; // stale answer
         state.loading = false;
         state.items = action.payload.products;
         state.total = action.payload.total;
@@ -74,6 +79,7 @@ const productSlice = createSlice({
         state.pages = action.payload.pages;
       })
       .addCase(fetchProducts.rejected, (state, action) => {
+        if (action.meta.requestId !== state.listRequestId) return;
         state.loading = false;
         state.error = action.payload;
       })

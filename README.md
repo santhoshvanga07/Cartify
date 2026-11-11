@@ -75,6 +75,12 @@ send from. Gmail works and is free:
 When deployed, add the same five variables in your host's dashboard (on Render: the service →
 **Environment**), not in a committed file. Gmail allows roughly 500 emails a day, plenty for a demo.
 
+### Deploying the web app
+
+`client/vercel.json` (Vercel) and `client/public/_redirects` (Netlify) send every URL to the app, so links in
+emails — `/reset-password/…`, `/orders/…` — open the right page instead of a 404. On another static host, add
+a rewrite of `/*` to `/index.html` in its settings.
+
 ### Removing old demo data
 
 Earlier versions filled the database with 24 demo products, demo customers (`@example.com`), orders, reviews
@@ -109,7 +115,7 @@ It only touches records it can identify as demo data; staff, settings and anythi
 | 07 | Cart | Server-priced, stock-checked |
 | 08 | Wishlist | Save, move to bag, count in the navbar |
 | 09 | Checkout | Address validation, coupons, GST and shipping computed on the server |
-| 10 | Payment | Cash on delivery; Razorpay with server-side signature verification, retry and refunds |
+| 10 | Payment | Cash on delivery; Razorpay with server-side signature verification, retry and refunds; unpaid online orders cancel themselves after 30 minutes (after checking with Razorpay that no money arrived) |
 | 11 | Orders | Tracking, cancel, return requests within the return window, GST tax invoice (print / PDF) |
 | 12 | Review & Rating | Verified-purchase badge, helpful votes, reporting |
 | 13 | AI Shopping Assistant | Chat that turns plain English into a real catalogue search |
@@ -144,6 +150,7 @@ npm run test:admin-tools    # settings, activity log, reports
 npm run test:reco
 npm run test:images         # product photos, Cloudinary stubbed
 npm run test:purge
+npm run test:fixes          # product edits, slugs, categories, filters, validation, analytics
 node _ordertest.mjs && node _carttest.mjs && node _reviewtest.mjs
 ```
 

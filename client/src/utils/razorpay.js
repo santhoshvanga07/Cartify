@@ -25,10 +25,17 @@ const loadScript = () => {
  * @param {{ orderId, amount, currency, keyId }} razorpay  from our API
  * @param {{ name, email }} customer
  * @param {string} description
+ * @param {{ onAttemptFailed?: (message: string) => void }} [options]
  * @returns {Promise<object>} Razorpay's success payload; rejects with
  *   { dismissed: true } if the shopper closed the window.
+ *
+ * A declined card does NOT end the payment: Razorpay keeps its window open so
+ * the shopper can try another card or UPI. So a failed attempt only reports
+ * itself (onAttemptFailed); the promise settles when a payment succeeds or the
+ * window is closed. Rejecting on the first failure would mean a later
+ * successful attempt is never sent to our server - money taken, order unpaid.
  */
-export const openRazorpay = async (razorpay, customer, description) => {
+export const openRazorpay = async (razorpay, customer, description, { onAttemptFailed } = {}) => {
   await loadScript();
 
   return new Promise((resolve, reject) => {
@@ -44,7 +51,7 @@ export const openRazorpay = async (razorpay, customer, description) => {
       handler: resolve,
       modal: { ondismiss: () => reject({ dismissed: true }) },
     });
-    widget.on('payment.failed', (resp) => reject(new Error(resp.error?.description || 'Payment failed')));
+    widget.on('payment.failed', (resp) => onAttemptFailed?.(resp.error?.description || 'Payment failed'));
     widget.open();
   });
 };
