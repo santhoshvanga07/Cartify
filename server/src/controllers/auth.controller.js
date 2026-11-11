@@ -2,7 +2,7 @@ import User from '../models/User.js';
 import crypto from 'node:crypto';
 import sendTokenResponse, { authCookieOptions } from '../utils/sendTokenResponse.js';
 import {
-  notifyWelcome, notifyPasswordReset, notifyPasswordChanged,
+  notifyWelcome, notifyPasswordReset, notifyPasswordChanged, notifyLogin,
 } from '../services/notification.service.js';
 import { logActivity } from '../services/activity.service.js';
 
@@ -52,6 +52,7 @@ export const login = async (req, res) => {
   }
 
   logActivity(req, 'auth.login', { type: 'user', id: user._id, label: email }, '', user);
+  notifyLogin(user, { ip: req.ip, userAgent: req.get('user-agent') });
   sendTokenResponse(user, 200, res);
 };
 

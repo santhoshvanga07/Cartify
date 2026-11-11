@@ -7,6 +7,7 @@ const { call, expect, loginSuperAdmin, register, finish } = await startHarness()
 await loginSuperAdmin();
 
 const lastMailTo = (email) => [...outbox].reverse().find((m) => m.to === email);
+const recentSubjectsTo = (email, n = 3) => outbox.filter((m) => m.to === email).slice(-n).map((m) => m.subject);
 const tick = () => new Promise((r) => setTimeout(r, 50)); // let fire-and-forget emails land
 
 console.log('--- welcome email ---');
@@ -43,7 +44,14 @@ expect('other device is signed out', r.status, 401, `"${r.body.message}"`);
 r = await call('x', 'POST', '/api/auth/login', { email: 'kim@test.com', password: 'newpassword1' });
 expect('new password works', r.status, 200);
 await tick();
-expect('password-changed email sent', lastMailTo('kim@test.com')?.subject, 'Your Cartify password was changed');
+// Signing in right after sends a sign-in alert, so look a few emails back.
+expect('password-changed email sent', recentSubjectsTo('kim@test.com').includes('Your Cartify password was changed'), true);
+const signIn = lastMailTo('kim@test.com');
+expect('sign-in alert sent on login', signIn?.subject, 'New sign-in to your Cartify account');
+expect('  it says when it happened (IST)', /IST/.test(signIn?.text || ''), true);
+expect('  and links to reset the password', signIn?.text.includes('/forgot-password'), true);
+r = await call('x', 'POST', '/api/auth/login', { email: 'kim@test.com', password: 'wrong-password' });
+expect('no sign-in alert for a failed attempt', lastMailTo('kim@test.com') === signIn, true);
 
 console.log('\n--- forgot / reset ---');
 r = await call(null, 'POST', '/api/auth/forgot-password', { email: 'nobody@test.com' });
@@ -83,6 +91,10 @@ r = await call('y', 'POST', '/api/orders', { shippingAddress: { ...ADDRESS, full
 await tick();
 const orderMail = lastMailTo('kim@test.com');
 expect('order confirmation sent', orderMail?.subject, `Order ${r.body.order.orderNumber} confirmed`);
+expect('  lists the items', orderMail?.text.includes(p.name), true);
+expect('  shows the total', orderMail?.text.includes('Total: Rs'), true);
+expect('  shows the delivery address', orderMail?.text.includes('Delivering to:'), true);
+expect('  shows the payment method', orderMail?.text.includes('Cash on delivery'), true);
 expect('staff alerted', lastMailTo(process.env.SEED_SUPERADMIN_EMAIL)?.subject.startsWith('[Cartify admin] New order'), true);
 
 await call('sa', 'PATCH', `/api/orders/${r.body.order._id}/status`, { status: 'confirmed' });

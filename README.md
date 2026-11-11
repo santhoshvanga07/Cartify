@@ -72,6 +72,19 @@ send from. Gmail works and is free:
 4. Restart the API and run `npm run check:email` in `server/` — it signs in, sends you a test email, and tells
    you exactly what to fix if anything is wrong (`npm run check:email -- someone@else.com` sends it elsewhere).
 
+**What gets emailed to the customer's registered address:**
+
+| When | Email |
+|---|---|
+| They register | Welcome |
+| They sign in | Sign-in alert: time (IST), device, IP, and a "not you? reset your password" link |
+| They place an order | Full order: items, quantities, prices, discount, GST, shipping, total, payment method, delivery address |
+| Online payment succeeds | Payment received, with the order and an invoice link |
+| Order confirmed / shipped / delivered / cancelled / return received / return complete | Status update with the full order, plus the refund amount when money goes back |
+| Forgot password / password changed | Reset link / security notice |
+
+Staff (admins) also get an alert for every new order and return request.
+
 When deployed, add the same five variables in your host's dashboard (on Render: the service →
 **Environment**), not in a committed file. Gmail allows roughly 500 emails a day, plenty for a demo.
 
