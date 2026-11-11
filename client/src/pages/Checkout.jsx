@@ -5,7 +5,6 @@ import { toast } from 'react-toastify';
 import { fetchCart } from '../features/cart/cartSlice';
 import { placeOrder, clearPlaced, verifyPayment } from '../features/orders/orderSlice';
 import { openRazorpay } from '../utils/razorpay';
-import { useSettings } from '../utils/settings';
 import { inr } from '../components/ProductCard';
 import api from '../api/axios';
 import AddressFields, { BLANK_ADDRESS, pickAddress, oneLine } from '../components/AddressFields';
@@ -19,7 +18,6 @@ const Checkout = () => {
   const [saved, setSaved] = useState([]);
   const [selectedId, setSelectedId] = useState('new');
   const [saveForLater, setSaveForLater] = useState(true);
-  const { emailVerificationRequired } = useSettings();
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [code, setCode] = useState('');
   // { coupon, totals } from the server's preview. Only a preview - the order
@@ -36,7 +34,6 @@ const Checkout = () => {
   const { loading, placed } = useSelector((state) => state.orders);
   const cartLoading = useSelector((state) => state.cart.loading);
   const user = useSelector((state) => state.auth.user);
-  const mustVerify = emailVerificationRequired && user?.role === 'customer' && user?.emailVerified === false;
 
   useEffect(() => {
     dispatch(fetchCart());
@@ -378,13 +375,7 @@ const Checkout = () => {
               </div>
             </dl>
 
-            {mustVerify && (
-              <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Confirm your email to place this order - open the link we sent to {user.email} (see the banner
-                above to send a new one). Your bag will wait.
-              </p>
-            )}
-            <button type="submit" disabled={loading || mustVerify} className="btn btn-primary mt-6 w-full">
+            <button type="submit" disabled={loading} className="btn btn-primary mt-6 w-full">
               {loading ? 'Placing order…' : `Place order · ${inr(shown.total)}`}
             </button>
           </div>

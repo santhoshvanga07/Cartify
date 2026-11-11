@@ -37,8 +37,6 @@ import AdminSettings from './pages/admin/AdminSettings';
 import AdminActivity from './pages/admin/AdminActivity';
 import NotFound from './pages/NotFound';
 import Footer from './components/Footer';
-import VerifyEmailBanner from './components/VerifyEmailBanner';
-import VerifyEmail from './pages/VerifyEmail';
 import { Terms, Privacy, Returns, Shipping, Contact } from './pages/Policies';
 
 function App() {
@@ -65,7 +63,6 @@ function App() {
   return (
     <div className="min-h-screen bg-page text-ink">
       <Navbar />
-      <VerifyEmailBanner />
       <Routes>
         {/* Public */}
         <Route path="/" element={<Home />} />
@@ -77,7 +74,6 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/verify-email/:token" element={<VerifyEmail />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/returns" element={<Returns />} />

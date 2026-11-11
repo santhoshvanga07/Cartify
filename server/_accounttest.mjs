@@ -18,8 +18,8 @@ const tick = () => new Promise((r) => setTimeout(r, 50)); // let fire-and-forget
 console.log('--- welcome email ---');
 await register('kim', 'Kim');
 await tick();
-expect('welcome email sent on register', lastMailTo('kim@test.com')?.subject, 'Welcome to Cartify - please confirm your email');
-expect('  it carries a confirm link', /verify-email\/[a-f0-9]{64}/.test(lastMailTo('kim@test.com')?.text || ''), true);
+expect('welcome email sent on register', lastMailTo('kim@test.com')?.subject, 'Welcome to Cartify');
+expect('  with no confirm link (sign-up uses a code instead)', /verify-email/.test(lastMailTo('kim@test.com')?.text || ''), false);
 
 console.log('\n--- profile ---');
 let r = await call('kim', 'PUT', '/api/auth/me', { name: 'Kim Lee', role: 'superadmin', isActive: false });
@@ -161,26 +161,18 @@ const realCode = lastMailTo('guesser@test.com').text.match(/code is (\d{6})/)[1]
 r = await call('guess', 'POST', '/api/auth/register/verify', { email: 'guesser@test.com', code: realCode });
 expect('after 5 wrong codes even the right one is refused', r.status, 400, `"${r.body.message}"`);
 
-console.log('\n--- accounts made while checking was off still need confirming ---');
+console.log('\n--- the old confirm-by-link flow is gone ---');
+r = await call(null, 'POST', '/api/auth/verify-email/0123456789abcdef');
+expect('no confirm-link endpoint any more', r.status, 404);
+r = await call('newbie', 'POST', '/api/auth/verify-email/resend');
+expect('no "send a new link" endpoint any more', r.status, 404);
 process.env.REQUIRE_EMAIL_VERIFICATION = 'false';
-await signUp('legacy', 'legacy@test.com');
+r = await signUp('quick', 'quick@test.com');
+expect('with checking switched off, the account is created at once', r.status, 201);
+await call('quick', 'POST', '/api/cart', { productId: someProduct._id, quantity: 1 });
 process.env.REQUIRE_EMAIL_VERIFICATION = 'true';
-await call('legacy', 'POST', '/api/cart', { productId: someProduct._id, quantity: 1 });
-r = await call('legacy', 'POST', '/api/orders', { shippingAddress: ADDRESS });
-expect('unconfirmed account cannot order', r.status, 403, `"${r.body.message}"`);
-expect('  with a code the app can act on', r.body.code, 'EMAIL_NOT_VERIFIED');
-r = await call('legacy', 'POST', '/api/auth/verify-email/resend');
-expect('can ask for a confirm link', r.status, 200);
-await tick();
-const link = lastMailTo('legacy@test.com')?.text.match(/verify-email\/([a-f0-9]{64})/)?.[1];
-r = await call(null, 'POST', '/api/auth/verify-email/deadbeef');
-expect('bogus link rejected', r.status, 400);
-r = await call(null, 'POST', `/api/auth/verify-email/${link}`);
-expect('the link confirms the email', r.status, 200);
-r = await call(null, 'POST', `/api/auth/verify-email/${link}`);
-expect('link is single-use', r.status, 400);
-r = await call('legacy', 'POST', '/api/orders', { shippingAddress: ADDRESS });
-expect('now they can order', r.status, 201, `"${r.body.message}"`);
+r = await call('quick', 'POST', '/api/orders', { shippingAddress: ADDRESS });
+expect('  and can order (no separate confirm step)', r.status, 201, `"${r.body.message}"`);
 const staff = await User.findOne({ email: process.env.SEED_SUPERADMIN_EMAIL });
 expect('staff accounts are confirmed automatically', staff.emailVerified, true);
 process.env.REQUIRE_EMAIL_VERIFICATION = 'false';

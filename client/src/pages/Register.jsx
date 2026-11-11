@@ -30,11 +30,7 @@ const Register = () => {
 
   useEffect(() => {
     if (user) {
-      toast.success(
-        user.emailVerified === false
-          ? `Welcome, ${user.name}! Check your email to confirm your address.`
-          : `Welcome, ${user.name}! Your account is ready.`
-      );
+      toast.success(`Welcome, ${user.name}! Your account is ready.`);
       navigate('/', { replace: true });
     }
   }, [user, navigate]);

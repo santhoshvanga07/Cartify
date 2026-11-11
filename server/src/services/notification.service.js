@@ -24,35 +24,13 @@ export const notifySignupCode = ({ name, email }, code, minutes) =>
     text: `Your Cartify sign-up code is ${code}. It expires in ${minutes} minutes.\nIf you did not try to sign up, ignore this email - no account has been created.`,
   });
 
-export const notifyWelcome = (user, verifyUrl, hours = 24) =>
-  !verifyUrl
-    ? queueEmail({
-      to: user.email,
-      subject: 'Welcome to Cartify',
-      title: 'Welcome to Cartify',
-      html: `<p>Hi ${esc(user.name)}, your account is ready and your email is confirmed.</p>${button(`${clientUrl()}/products`, 'Start shopping')}`,
-      text: `Hi ${user.name}, your Cartify account is ready. ${clientUrl()}/products`,
-    })
-    : queueEmail({
-    to: user.email,
-    subject: 'Welcome to Cartify - please confirm your email',
-    title: 'Welcome to Cartify',
-    html: `<p>Hi ${esc(user.name)}, your account is ready. One last step: confirm this is your email address,
-      so your order, shipping and refund updates reach you.</p>
-      ${button(verifyUrl, 'Confirm my email')}
-      <p style="font-size:13px;color:#6b6860">The link works for ${hours} hours. You can browse and fill your bag meanwhile; placing an order needs a confirmed email.</p>`,
-    text: `Hi ${user.name}, your Cartify account is ready. Confirm your email address: ${verifyUrl}\nThe link works for ${hours} hours.`,
-  });
-
-export const notifyVerifyEmail = (user, verifyUrl, hours = 24) =>
+export const notifyWelcome = (user) =>
   queueEmail({
     to: user.email,
-    subject: 'Confirm your email for Cartify',
-    title: 'Confirm your email',
-    html: `<p>Hi ${esc(user.name)}, here is your new link to confirm ${esc(user.email)}.</p>
-      ${button(verifyUrl, 'Confirm my email')}
-      <p style="font-size:13px;color:#6b6860">The link works for ${hours} hours. If you did not ask for it, you can ignore this email.</p>`,
-    text: `Confirm your email for Cartify: ${verifyUrl}\nThe link works for ${hours} hours.`,
+    subject: 'Welcome to Cartify',
+    title: 'Welcome to Cartify',
+    html: `<p>Hi ${esc(user.name)}, your account is ready.</p>${button(`${clientUrl()}/products`, 'Start shopping')}`,
+    text: `Hi ${user.name}, your Cartify account is ready. ${clientUrl()}/products`,
   });
 
 export const notifyPasswordReset = (user, resetUrl, minutes) =>

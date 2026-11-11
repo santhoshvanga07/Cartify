@@ -57,14 +57,9 @@ const userSchema = new mongoose.Schema(
     resetPasswordToken: { type: String, select: false },
     resetPasswordExpire: { type: Date, select: false },
 
-    /**
-     * Has the customer clicked the link we emailed? Every order, shipping and
-     * refund email goes to this address, so it must be real before they can
-     * order. Only the SHA-256 of the link's token is stored, like reset tokens.
-     */
+    // True once the customer proved the address by entering the 6-digit sign-up
+    // code (staff: set when the account is created). Shown in the admin lists.
     emailVerified: { type: Boolean, default: false },
-    emailVerifyToken: { type: String, select: false },
-    emailVerifyExpire: { type: Date, select: false },
 
     // Saved delivery addresses, so checkout is one tap for returning customers.
     addresses: {
@@ -106,14 +101,6 @@ userSchema.methods.createPasswordResetToken = function (minutes) {
   const raw = crypto.randomBytes(32).toString('hex');
   this.resetPasswordToken = crypto.createHash('sha256').update(raw).digest('hex');
   this.resetPasswordExpire = new Date(Date.now() + minutes * 60 * 1000);
-  return raw;
-};
-
-/** Same pattern as the reset token: the raw value goes in the email, only its hash is stored. */
-userSchema.methods.createEmailVerifyToken = function (hours = 24) {
-  const raw = crypto.randomBytes(32).toString('hex');
-  this.emailVerifyToken = crypto.createHash('sha256').update(raw).digest('hex');
-  this.emailVerifyExpire = new Date(Date.now() + hours * 60 * 60 * 1000);
   return raw;
 };
 

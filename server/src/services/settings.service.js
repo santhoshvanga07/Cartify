@@ -52,7 +52,5 @@ export const publicSettings = () => {
     freeShippingAbove: s.freeShippingAbove,
     codEnabled: s.codEnabled,
     returnWindowDays: s.returnWindowDays,
-    // Lets the shop explain the rule up front instead of failing at checkout.
-    emailVerificationRequired: process.env.REQUIRE_EMAIL_VERIFICATION !== 'false',
   };
 };

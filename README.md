@@ -99,10 +99,10 @@ An account is only created for an email address that really exists:
    account yet.
 3. The account is created - already confirmed - only when the right code is entered.
 
-Without SMTP settings the code is printed in the API console. Staff accounts and accounts created before this
-feature count as confirmed; an unconfirmed older account gets a banner with a confirm link and cannot order
-until it is confirmed. For local experiments only: `REQUIRE_EMAIL_VERIFICATION=false` (accounts created at
-once) or `EMAIL_DOMAIN_CHECK=false` (skip the DNS lookup where DNS is blocked).
+Without SMTP settings the code is printed in the API console. There is no separate "confirm by link" step:
+the code at sign-up is the confirmation. Staff accounts and accounts created before this feature count as
+confirmed. For local experiments only: `REQUIRE_EMAIL_VERIFICATION=false` (accounts created at once) or
+`EMAIL_DOMAIN_CHECK=false` (skip the DNS lookup where DNS is blocked).
 
 ### Deploying the web app
 

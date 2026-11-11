@@ -14,7 +14,6 @@ import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js'
 import { checkAddress, cleanAddress } from '../utils/address.js';
 import { takeStock, putBackStock, LOW_STOCK } from '../utils/stock.js';
 import { saveAddressFor } from './address.controller.js';
-import { emailVerificationRequired } from './auth.controller.js';
 
 /** Puts units back on the shelf (into the right size/colour), e.g. for a cancelled order or a checkout that failed halfway. */
 const restock = (lines) => Promise.all(lines.map((i) => putBackStock(i.product, i.variant, i.quantity)));
@@ -31,15 +30,6 @@ const restock = (lines) => Promise.all(lines.map((i) => putBackStock(i.product, 
 export const createOrder = async (req, res) => {
   // req.body is undefined when a request arrives without a JSON body.
   const { shippingAddress, paymentMethod = 'cod', couponCode, saveAddress } = req.body ?? {};
-
-  // Order, shipping and refund emails go to this address - it must be real.
-  if (emailVerificationRequired() && !req.user.emailVerified && req.user.role === 'customer') {
-    return res.status(403).json({
-      success: false,
-      code: 'EMAIL_NOT_VERIFIED',
-      message: `Please confirm your email first - we sent a link to ${req.user.email}.`,
-    });
-  }
 
   if (!['cod', 'razorpay'].includes(paymentMethod)) {
     return res.status(400).json({ success: false, message: 'Invalid payment method' });

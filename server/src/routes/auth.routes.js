@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 import {
   register, login, logout, getMe, updateMe, changePassword, forgotPassword, resetPassword,
-  verifyEmail, resendVerification, verifySignup, resendSignupCode,
+  verifySignup, resendSignupCode,
 } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import {
@@ -28,10 +28,6 @@ router.put('/password', protect, loginLimiter, changePasswordRules, runValidatio
 
 router.post('/forgot-password', passwordResetLimiter, forgotPasswordRules, runValidation, forgotPassword);
 router.post('/reset-password/:token', passwordResetLimiter, resetPasswordRules, runValidation, resetPassword);
-
-// Confirming the email address. "resend" is declared first so it is not read as a token.
-router.post('/verify-email/resend', protect, passwordResetLimiter, resendVerification);
-router.post('/verify-email/:token', passwordResetLimiter, verifyEmail);
 
 // Saved delivery addresses (the signed-in customer's own).
 router.get('/addresses', protect, listAddresses);
