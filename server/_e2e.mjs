@@ -80,6 +80,28 @@ r = await call('cust2', 'POST', '/api/auth/login', {
 });
 expect('suspended user cannot log back in', r.status, 403, `"${r.body.message}"`);
 
+console.log('\n--- logout clears the cookie it set ---');
+// In production the site and the API are cross-site. The browser only accepts
+// the "delete this cookie" header if it carries the same SameSite/Secure
+// attributes as the cookie being deleted - otherwise the user stays signed in.
+const cookieAttrs = (c = '') =>
+  c.split(';').slice(1).map((a) => a.trim().toLowerCase())
+    .filter((a) => /^(httponly|secure|samesite=)/.test(a)).sort().join('; ');
+const realEnv = process.env.NODE_ENV;
+for (const env of ['development', 'production']) {
+  process.env.NODE_ENV = env;
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: process.env.SEED_SUPERADMIN_EMAIL, password: process.env.SEED_SUPERADMIN_PASSWORD }),
+  });
+  const setCookie = login.headers.getSetCookie().find((c) => c.startsWith('token='));
+  const logout = await fetch(`${base}/api/auth/logout`, { method: 'POST' });
+  const clearCookie = logout.headers.getSetCookie().find((c) => c.startsWith('token='));
+  expect(`[${env}] logout cookie has the login cookie's attributes`, cookieAttrs(clearCookie), cookieAttrs(setCookie));
+  expect(`[${env}] logout cookie is already expired`, /expires=thu, 01 jan 1970/i.test(clearCookie || ''), true);
+}
+process.env.NODE_ENV = realEnv;
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 console.log('final users:', (await User.find().select('email role isActive'))
   .map((u) => `${u.email} [${u.role}]${u.isActive ? '' : ' SUSPENDED'}`).join('\n              '));

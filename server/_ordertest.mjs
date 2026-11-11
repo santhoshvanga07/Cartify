@@ -92,5 +92,19 @@ r = await call('cust', 'PATCH', `/api/orders/${order2._id}/cancel`);
 expect('can cancel a new order', r.status, 200);
 expect('stock restored on cancel', (await Product.findById(p1._id)).stock, beforeCancel + 1);
 
+console.log('\n--- two shoppers race for the last unit ---');
+const lastOne = await Product.findOne({ _id: { $ne: p1._id }, isActive: true });
+await Product.updateOne({ _id: lastOne._id }, { stock: 1 });
+for (const who of ['racer1', 'racer2']) {
+  await call(who, 'POST', '/api/auth/register', { name: who, email: `${who}@cartify.com`, password: 'password123' });
+  await call(who, 'POST', '/api/cart', { productId: lastOne._id, quantity: 1 });
+}
+// Both carts passed the stock check; now both check out at the same moment.
+const race = await Promise.all(['racer1', 'racer2'].map((who) =>
+  call(who, 'POST', '/api/orders', { shippingAddress: ADDRESS, paymentMethod: 'cod' })));
+expect('exactly one shopper gets the last unit', race.filter((x) => x.status === 201).length, 1);
+expect('the other is told it sold out', race.filter((x) => x.status === 409).length, 1);
+expect('stock never goes below zero', (await Product.findById(lastOne._id)).stock, 0);
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 server.close(); await mongoose.connection.close(); process.exit(fail ? 1 : 0);

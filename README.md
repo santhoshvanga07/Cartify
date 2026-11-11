@@ -53,6 +53,28 @@ Every integration is optional and stays switched off until its keys are set:
 3. Put them in `server/.env` as `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` and restart. "Pay online" appears at
    checkout; pay with Razorpay's test cards or test UPI ID `success@razorpay`. No real money moves in test mode.
 
+### Email (Gmail SMTP)
+
+Order, payment, shipping, refund and password-reset emails are already built in; they only need an account to
+send from. Gmail works and is free:
+
+1. Turn on **2-Step Verification** for the Google account (myaccount.google.com → Security).
+2. Open **myaccount.google.com/apppasswords**, create an app password named "Cartify", and copy the 16-letter
+   code. Your normal Gmail password will **not** work.
+3. In `server/.env`:
+   ```
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=yourname@gmail.com
+   SMTP_PASS=abcdefghijklmnop
+   EMAIL_FROM=Cartify <yourname@gmail.com>
+   ```
+4. Restart the API and run `npm run check:email` in `server/` — it signs in, sends you a test email, and tells
+   you exactly what to fix if anything is wrong (`npm run check:email -- someone@else.com` sends it elsewhere).
+
+When deployed, add the same five variables in your host's dashboard (on Render: the service →
+**Environment**), not in a committed file. Gmail allows roughly 500 emails a day, plenty for a demo.
+
 ### Removing old demo data
 
 Earlier versions filled the database with 24 demo products, demo customers (`@example.com`), orders, reviews

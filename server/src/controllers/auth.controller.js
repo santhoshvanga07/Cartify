@@ -1,6 +1,6 @@
 import User from '../models/User.js';
 import crypto from 'node:crypto';
-import sendTokenResponse from '../utils/sendTokenResponse.js';
+import sendTokenResponse, { authCookieOptions } from '../utils/sendTokenResponse.js';
 import {
   notifyWelcome, notifyPasswordReset, notifyPasswordChanged,
 } from '../services/notification.service.js';
@@ -61,10 +61,8 @@ export const login = async (req, res) => {
  * @access  Private
  */
 export const logout = (req, res) => {
-  res.cookie('token', '', {
-    httpOnly: true,
-    expires: new Date(0), // already expired -> browser deletes it
-  });
+  // Same attributes as when it was set, or the browser keeps the old cookie.
+  res.clearCookie('token', authCookieOptions());
   res.status(200).json({ success: true, message: 'Logged out' });
 };
 

@@ -13,6 +13,10 @@ import {
 } from '../services/notification.service.js';
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
 
+/** Puts units back on the shelf, e.g. for a cancelled order or a checkout that failed halfway. */
+const restock = (lines) =>
+  Promise.all(lines.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } })));
+
 /**
  * @route POST /api/orders
  * @access Private
@@ -55,6 +59,8 @@ export const createOrder = async (req, res) => {
   }
 
   // Re-check stock at checkout. It may have sold out since it was added.
+  // This gives a friendly list of every short item; the real guarantee is the
+  // conditional reservation further down.
   const outOfStock = lines.filter((i) => i.quantity > i.product.stock);
   if (outOfStock.length) {
     return res.status(409).json({
@@ -87,6 +93,31 @@ export const createOrder = async (req, res) => {
     }
   }
 
+  /**
+   * Reserve the stock. Each update only matches while the product still has
+   * enough units, so the check and the decrement are ONE atomic step. If two
+   * shoppers race for the last unit, the database lets exactly one through.
+   * (Checking stock above and then doing a plain $inc would let both pass the
+   * check and drive stock below zero.)
+   */
+  const reserved = [];
+  for (const item of items) {
+    const result = await Product.updateOne(
+      { _id: item.product, isActive: true, stock: { $gte: item.quantity } },
+      { $inc: { stock: -item.quantity } }
+    );
+    if (result.modifiedCount !== 1) {
+      // Undo what we already took, and give the coupon back.
+      await restock(reserved);
+      if (coupon) await releaseCoupon(coupon._id, req.user.id);
+      return res.status(409).json({
+        success: false,
+        message: `Sorry, ${item.name} just sold out. Please update your bag.`,
+      });
+    }
+    reserved.push(item);
+  }
+
   const pricing = calculateTotals(lineItems, { discount });
 
   let order;
@@ -110,17 +141,11 @@ export const createOrder = async (req, res) => {
       statusHistory: [{ status: 'placed', note: `Order placed (${paymentMethod.toUpperCase()})` }],
     });
   } catch (err) {
-    // The coupon was taken before the order existed - give it back.
+    // The coupon and stock were taken before the order existed - give them back.
+    await restock(reserved);
     if (coupon) await releaseCoupon(coupon._id, req.user.id);
     throw err;
   }
-
-  // Reserve the stock. $inc is atomic - two shoppers cannot both take the last unit.
-  await Promise.all(
-    items.map((i) =>
-      Product.updateOne({ _id: i.product }, { $inc: { stock: -i.quantity } })
-    )
-  );
 
   // The cart has become an order; empty it.
   await Cart.findOneAndUpdate({ user: req.user.id }, { items: [] });
@@ -152,9 +177,7 @@ export const createOrder = async (req, res) => {
  * the order says so, so staff can refund by hand rather than it being lost.
  */
 const releaseOrder = async (order) => {
-  await Promise.all(
-    order.items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } }))
-  );
+  await restock(order.items);
 
   if (order.paymentStatus !== 'paid') return;
 

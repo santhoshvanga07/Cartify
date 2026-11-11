@@ -14,6 +14,7 @@
     "test:reviews": "node _reviewtest.mjs",
     "test:ratelimit": "node _ratelimittest.mjs",
     "check:cloudinary": "node _checkcloudinary.mjs",
+    "check:email": "node _checkemail.mjs",
     "test:wishlist-coupons": "node _wishlistcoupontest.mjs",
     "test:payments": "node _paymenttest.mjs",
     "test:account": "node _accounttest.mjs",

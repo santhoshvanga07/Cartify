@@ -15,7 +15,8 @@ import nodemailer from 'nodemailer';
 export const isEmailConfigured = () => Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
 
 let transporter = null;
-const getTransporter = () => {
+/** The one SMTP connection the app sends through (also used by npm run check:email). */
+export const getTransporter = () => {
   transporter ??= nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT) || 587,
