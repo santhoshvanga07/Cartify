@@ -8,6 +8,7 @@ import 'dotenv/config';
 import connectDB, { disconnectDB } from './src/config/db.js';
 import app from './src/app.js';
 import ensureSuperAdmin from './src/utils/ensureSuperAdmin.js';
+import ensureOthersCategory from './src/utils/ensureOthersCategory.js';
 import seedCatalog from './tests/fixtures/seedCatalog.js';
 
 export const ADDRESS = {
@@ -18,6 +19,7 @@ export const ADDRESS = {
 export const startHarness = async (port = 5099) => {
   await connectDB();
   await ensureSuperAdmin();
+  await ensureOthersCategory();
   await seedCatalog();
 
   const server = app.listen(port);

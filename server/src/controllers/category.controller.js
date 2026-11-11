@@ -1,10 +1,12 @@
-import Category from '../models/Category.js';
+import Category, { OTHERS_SLUG } from '../models/Category.js';
 import Product from '../models/Product.js';
 import { logActivity } from '../services/activity.service.js';
 
 /** @route GET /api/categories  @access Public */
 export const listCategories = async (req, res) => {
   const categories = await Category.find({ isActive: true }).sort({ name: 1 });
+  // A-Z, with the catch-all "Others" always at the end of every dropdown.
+  categories.sort((a, b) => (a.slug === OTHERS_SLUG) - (b.slug === OTHERS_SLUG));
   res.status(200).json({ success: true, count: categories.length, categories });
 };
 
@@ -37,6 +39,9 @@ export const updateCategory = async (req, res) => {
   // is unused), and the slug follows the name. Assign then save() so the slug
   // pre-save hook runs.
   const { name, description } = req.body ?? {};
+  if (category.slug === OTHERS_SLUG && name !== undefined && String(name).trim() !== category.name) {
+    return res.status(400).json({ success: false, message: '"Others" is built in and cannot be renamed (its description can be changed)' });
+  }
   if (name !== undefined) category.name = name;
   if (description !== undefined) category.description = description;
   await category.save();
@@ -49,6 +54,11 @@ export const updateCategory = async (req, res) => {
 export const deleteCategory = async (req, res) => {
   const category = await Category.findById(req.params.id);
   if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
+
+  // The catch-all must always exist: it is where products that fit nowhere else go.
+  if (category.slug === OTHERS_SLUG) {
+    return res.status(400).json({ success: false, message: '"Others" is built in and cannot be deleted' });
+  }
 
   // Refuse to orphan products - referential integrity is our job, not MongoDB's.
   const inUse = await Product.countDocuments({ category: category._id, isActive: true });

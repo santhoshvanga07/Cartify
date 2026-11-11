@@ -6,6 +6,8 @@ const AdminCategories = () => {
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({ name: '', description: '' });
   const [editingId, setEditingId] = useState(null);
+  // "Others" is the built-in catch-all: its name stays, only the description can change.
+  const editingBuiltIn = categories.find((c) => c._id === editingId)?.slug === 'others';
   const [saving, setSaving] = useState(false);
 
   const load = () =>
@@ -56,7 +58,9 @@ const AdminCategories = () => {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
-              className="field"
+              readOnly={editingBuiltIn}
+              title={editingBuiltIn ? '"Others" is built in and keeps its name' : undefined}
+              className={`field ${editingBuiltIn ? 'opacity-60' : ''}`}
             />
           </div>
           <div>
@@ -91,7 +95,10 @@ const AdminCategories = () => {
         {categories.map((c) => (
           <div key={c._id} className="flex items-center gap-4 rounded-xl bg-surface px-4 py-3">
             <div className="min-w-0 flex-1">
-              <p className="text-sm text-ink">{c.name}</p>
+              <p className="text-sm text-ink">
+                {c.name}
+                {c.slug === 'others' && <span className="ml-2 text-xs text-muted">Built in · for products that fit no other category</span>}
+              </p>
               <p className="text-xs text-muted">
                 /{c.slug}
                 {c.description && ` · ${c.description}`}
@@ -107,9 +114,11 @@ const AdminCategories = () => {
               >
                 Edit
               </button>
-              <button onClick={() => remove(c)} className="text-body hover:text-red-600">
-                Remove
-              </button>
+              {c.slug !== 'others' && (
+                <button onClick={() => remove(c)} className="text-body hover:text-red-600">
+                  Remove
+                </button>
+              )}
             </div>
           </div>
         ))}

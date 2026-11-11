@@ -138,7 +138,7 @@ It only touches records it can identify as demo data; staff, settings and anythi
 | 01 | Authentication | JWT in an httpOnly cookie, register with real-email check (DNS + 6-digit email code), login/logout, sign-in alert emails, forgot & reset password (hashed single-use tokens), change password signs out other devices |
 | 02 | Customer | Profile: edit name, change password, saved delivery addresses (up to 5, one default) |
 | 03 | Product | CRUD, soft delete and restore, Cloudinary images, per-category specifications, sizes/colours with their own stock |
-| 04 | Category | CRUD; refuses to delete a category still in use |
+| 04 | Category | CRUD; refuses to delete a category still in use; a built-in "Others" category (always present, listed last, cannot be deleted or renamed) for products that fit nowhere else |
 | 05 | Search | Keyword search over a curated search index |
 | 06 | Filter & Sorting | Category, price, rating, stock; newest / price / rating |
 | 07 | Cart | Server-priced, stock-checked |

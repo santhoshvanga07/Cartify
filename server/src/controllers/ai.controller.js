@@ -96,7 +96,8 @@ export const fallbackFilters = (query, categories = []) => {
   }
 
   // A category named in the request ("laptops", "laptop", "audio") becomes the category filter.
-  for (const c of categories) {
+  // "other" is an ordinary word ("other laptops"), so the Others category is never guessed from it.
+  for (const c of categories.filter((x) => x.slug !== 'others')) {
     const name = c.name.toLowerCase();
     const forms = [name, name.replace(/s$/, ''), c.slug];
     const hit = forms.find((f) => f && new RegExp(`\\b${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?\\b`).test(text));

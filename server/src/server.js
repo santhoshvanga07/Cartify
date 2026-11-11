@@ -3,6 +3,7 @@ import app from './app.js';
 import connectDB from './config/db.js';
 import { loadSettings } from './services/settings.service.js';
 import ensureSuperAdmin from './utils/ensureSuperAdmin.js';
+import ensureOthersCategory from './utils/ensureOthersCategory.js';
 import User from './models/User.js';
 import { expireUnpaidOrders } from './controllers/order.controller.js';
 
@@ -31,6 +32,7 @@ const startServer = async () => {
    * and products (with photos) from the dashboard.
    */
   await ensureSuperAdmin();
+  await ensureOthersCategory(); // the built-in "Others" category
 
   // Accounts created before email confirmation existed are treated as confirmed,
   // so existing customers are not suddenly blocked from ordering.

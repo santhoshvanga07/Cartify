@@ -17,4 +17,8 @@ categorySchema.pre('save', function () {
   if (this.isModified('name')) this.slug = slugify(this.name) || `category-${this._id.toString().slice(-6)}`;
 });
 
+/** The built-in catch-all category: always present, always listed last, cannot be deleted or renamed. */
+export const OTHERS_SLUG = 'others';
+export const OTHERS_NAME = 'Others';
+
 export default mongoose.model('Category', categorySchema);
