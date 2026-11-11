@@ -106,6 +106,9 @@ confirmed. For local experiments only: `REQUIRE_EMAIL_VERIFICATION=false` (accou
 
 ### Deploying the web app
 
+**Step-by-step beginner guide (Atlas + Render + Vercel): [docs/deployment.md](docs/deployment.md).**
+
+
 `client/vercel.json` (Vercel) and `client/public/_redirects` (Netlify) send every URL to the app, so links in
 emails — `/reset-password/…`, `/orders/…` — open the right page instead of a 404. On another static host, add
 a rewrite of `/*` to `/index.html` in its settings.

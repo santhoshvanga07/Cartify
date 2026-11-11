@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Cartify backend - Express + MongoDB REST API",
   "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
