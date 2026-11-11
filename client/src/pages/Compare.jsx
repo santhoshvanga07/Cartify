@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { aiCompare, clearComparison } from '../features/ai/aiSlice';
 import { inr } from '../components/ProductCard';
 import api from '../api/axios';
+import usePageTitle from '../hooks/usePageTitle';
 
 /**
  * Search-as-you-type product picker. A fixed list could only ever offer the
@@ -72,6 +73,7 @@ const ProductPicker = ({ label, value, onChange }) => {
 };
 
 const Compare = () => {
+  usePageTitle('Compare products');
   const [params] = useSearchParams();
   const [slugA, setSlugA] = useState(params.get('a') || '');
   const [slugB, setSlugB] = useState(params.get('b') || '');

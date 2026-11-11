@@ -5,10 +5,12 @@ import { fetchProducts, fetchCategories } from '../features/products/productSlic
 import ProductCard from '../components/ProductCard';
 import { ProductShelf } from '../components/Recommendations';
 import { getRecentlyViewed } from '../utils/recentlyViewed';
+import usePageTitle from '../hooks/usePageTitle';
 
 const SHELF = 'border-t border-line py-14';
 
 const Home = () => {
+  usePageTitle(null);
   const dispatch = useDispatch();
   const { items, categories, loading } = useSelector((state) => state.products);
   const user = useSelector((state) => state.auth.user);

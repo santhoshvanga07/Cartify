@@ -5,13 +5,21 @@ import { toast } from 'react-toastify';
 import { fetchCart } from '../features/cart/cartSlice';
 import { placeOrder, clearPlaced, verifyPayment } from '../features/orders/orderSlice';
 import { openRazorpay } from '../utils/razorpay';
+import { useSettings } from '../utils/settings';
 import { inr } from '../components/ProductCard';
 import api from '../api/axios';
+import AddressFields, { BLANK_ADDRESS, pickAddress, oneLine } from '../components/AddressFields';
+import usePageTitle from '../hooks/usePageTitle';
 
-const BLANK = { fullName: '', phone: '', line1: '', line2: '', city: '', state: '', pincode: '' };
 
 const Checkout = () => {
-  const [address, setAddress] = useState(BLANK);
+  usePageTitle('Checkout');
+  const [address, setAddress] = useState(BLANK_ADDRESS);
+  // Saved addresses; selectedId is one of their ids, or 'new' for the form.
+  const [saved, setSaved] = useState([]);
+  const [selectedId, setSelectedId] = useState('new');
+  const [saveForLater, setSaveForLater] = useState(true);
+  const { emailVerificationRequired } = useSettings();
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [code, setCode] = useState('');
   // { coupon, totals } from the server's preview. Only a preview - the order
@@ -28,6 +36,7 @@ const Checkout = () => {
   const { loading, placed } = useSelector((state) => state.orders);
   const cartLoading = useSelector((state) => state.cart.loading);
   const user = useSelector((state) => state.auth.user);
+  const mustVerify = emailVerificationRequired && user?.role === 'customer' && user?.emailVerified === false;
 
   useEffect(() => {
     dispatch(fetchCart());
@@ -51,7 +60,23 @@ const Checkout = () => {
       .catch(() => {});
   }, []);
 
-  const set = (e) => setAddress({ ...address, [e.target.name]: e.target.value });
+  const chooseSaved = (a) => {
+    setSelectedId(a._id);
+    setAddress(pickAddress(a));
+  };
+
+  // Start on the default saved address, if there is one.
+  useEffect(() => {
+    if (!user) return;
+    api
+      .get('/auth/addresses')
+      .then(({ data }) => {
+        setSaved(data.addresses);
+        const preferred = data.addresses.find((a) => a.isDefault) || data.addresses[0];
+        if (preferred) chooseSaved(preferred);
+      })
+      .catch(() => {});
+  }, [user]);
 
   // A preview is only good for the bag it was made against. If the bag
   // changes, the discount shown would be stale - so ignore it.
@@ -77,7 +102,12 @@ const Checkout = () => {
   const submit = async (e) => {
     e.preventDefault();
     const result = await dispatch(
-      placeOrder({ shippingAddress: address, paymentMethod, couponCode: applied?.coupon.code })
+      placeOrder({
+        shippingAddress: address,
+        paymentMethod,
+        couponCode: applied?.coupon.code,
+        saveAddress: selectedId === 'new' && saveForLater,
+      })
     );
     if (!placeOrder.fulfilled.match(result)) return toast.error(result.payload);
     dispatch(fetchCart()); // the server emptied it
@@ -167,52 +197,50 @@ const Checkout = () => {
         <div>
           <h2 className="text-sm font-medium text-ink">Delivery address</h2>
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="label">Full name</label>
-              <input name="fullName" value={address.fullName} onChange={set} required className="field" />
+          {/* Saved addresses: one tap for returning customers. */}
+          {saved.length > 0 && (
+            <div className="mt-5 space-y-2" role="radiogroup" aria-label="Saved addresses">
+              {saved.map((a) => (
+                <label key={a._id} className="flex cursor-pointer items-start gap-3 rounded-xl bg-surface p-4">
+                  <input
+                    type="radio"
+                    name="saved-address"
+                    checked={selectedId === a._id}
+                    onChange={() => chooseSaved(a)}
+                    className="mt-1"
+                  />
+                  <span className="text-sm text-body">
+                    <span className="text-ink">{a.fullName}</span>
+                    {a.isDefault && <span className="ml-2 text-xs text-accent">Default</span>}
+                    <span className="block">{oneLine({ ...a, fullName: '' }).replace(/^, /, '')}</span>
+                    <span className="block text-xs text-muted">{a.phone}</span>
+                  </span>
+                </label>
+              ))}
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-surface p-4 text-sm text-ink">
+                <input
+                  type="radio"
+                  name="saved-address"
+                  checked={selectedId === 'new'}
+                  onChange={() => {
+                    setSelectedId('new');
+                    setAddress({ ...BLANK_ADDRESS, fullName: user?.name || '' });
+                  }}
+                />
+                Deliver to a new address
+              </label>
             </div>
-            <div className="sm:col-span-2">
-              <label className="label">Mobile number</label>
-              <input
-                name="phone"
-                value={address.phone}
-                onChange={set}
-                required
-                inputMode="numeric"
-                placeholder="10 digits"
-                className="field"
-              />
+          )}
+
+          {selectedId === 'new' && (
+            <div className="mt-5">
+              <AddressFields value={address} onChange={setAddress} idPrefix="checkout" />
+              <label className="mt-4 flex items-center gap-2 text-sm text-body">
+                <input type="checkbox" checked={saveForLater} onChange={(e) => setSaveForLater(e.target.checked)} />
+                Save this address for next time
+              </label>
             </div>
-            <div className="sm:col-span-2">
-              <label className="label">Address</label>
-              <input name="line1" value={address.line1} onChange={set} required className="field" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label">Apartment, landmark (optional)</label>
-              <input name="line2" value={address.line2} onChange={set} className="field" />
-            </div>
-            <div>
-              <label className="label">City</label>
-              <input name="city" value={address.city} onChange={set} required className="field" />
-            </div>
-            <div>
-              <label className="label">State</label>
-              <input name="state" value={address.state} onChange={set} required className="field" />
-            </div>
-            <div>
-              <label className="label">PIN code</label>
-              <input
-                name="pincode"
-                value={address.pincode}
-                onChange={set}
-                required
-                inputMode="numeric"
-                placeholder="6 digits"
-                className="field"
-              />
-            </div>
-          </div>
+          )}
 
           <h2 className="mt-10 text-sm font-medium text-ink">Payment</h2>
           <div className="mt-4 space-y-3">
@@ -349,7 +377,13 @@ const Checkout = () => {
               </div>
             </dl>
 
-            <button type="submit" disabled={loading} className="btn btn-primary mt-6 w-full">
+            {mustVerify && (
+              <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Confirm your email to place this order - open the link we sent to {user.email} (see the banner
+                above to send a new one). Your bag will wait.
+              </p>
+            )}
+            <button type="submit" disabled={loading || mustVerify} className="btn btn-primary mt-6 w-full">
               {loading ? 'Placing order…' : `Place order · ${inr(shown.total)}`}
             </button>
           </div>

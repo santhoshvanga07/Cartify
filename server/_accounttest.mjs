@@ -1,3 +1,6 @@
+// These scripts register throwaway customers and order straight away; the
+// email-confirmation step itself is tested in _accounttest.
+process.env.REQUIRE_EMAIL_VERIFICATION ??= 'false';
 import { startHarness, ADDRESS } from './_harness.mjs';
 import { outbox } from './src/services/email.service.js';
 import Product from './src/models/Product.js';
@@ -13,7 +16,8 @@ const tick = () => new Promise((r) => setTimeout(r, 50)); // let fire-and-forget
 console.log('--- welcome email ---');
 await register('kim', 'Kim');
 await tick();
-expect('welcome email sent on register', lastMailTo('kim@test.com')?.subject, 'Welcome to Cartify');
+expect('welcome email sent on register', lastMailTo('kim@test.com')?.subject, 'Welcome to Cartify - please confirm your email');
+expect('  it carries a confirm link', /verify-email\/[a-f0-9]{64}/.test(lastMailTo('kim@test.com')?.text || ''), true);
 
 console.log('\n--- profile ---');
 let r = await call('kim', 'PUT', '/api/auth/me', { name: 'Kim Lee', role: 'superadmin', isActive: false });
@@ -83,6 +87,61 @@ const token2 = lastMailTo('kim@test.com').text.match(/reset-password\/([a-f0-9]{
 await User.updateOne({ email: 'kim@test.com' }, { resetPasswordExpire: new Date(Date.now() - 1000) });
 r = await call(null, 'POST', `/api/auth/reset-password/${token2}`, { password: 'expired123' });
 expect('expired token rejected', r.status, 400);
+
+console.log('\n--- email confirmation ---');
+process.env.REQUIRE_EMAIL_VERIFICATION = 'true';
+await call('newbie', 'POST', '/api/auth/register', { name: 'New Shopper', email: 'newbie@test.com', password: 'password123' });
+await tick();
+const verifyLink = lastMailTo('newbie@test.com')?.text.match(/verify-email\/([a-f0-9]{64})/)?.[1];
+r = await call('newbie', 'GET', '/api/auth/me');
+expect('new account starts unconfirmed', r.body.user?.emailVerified, false);
+const someProduct = await Product.findOne({ stock: { $gt: 5 } });
+await call('newbie', 'POST', '/api/cart', { productId: someProduct._id, quantity: 1 });
+r = await call('newbie', 'POST', '/api/orders', { shippingAddress: ADDRESS });
+expect('cannot order before confirming', r.status, 403, `"${r.body.message}"`);
+expect('  with a code the app can act on', r.body.code, 'EMAIL_NOT_VERIFIED');
+r = await call('newbie', 'POST', '/api/auth/verify-email/resend');
+expect('can ask for a new link', r.status, 200);
+await tick();
+const freshLink = lastMailTo('newbie@test.com')?.text.match(/verify-email\/([a-f0-9]{64})/)?.[1];
+r = await call(null, 'POST', `/api/auth/verify-email/${verifyLink}`);
+expect('the old link stops working once a new one is sent', r.status, 400);
+r = await call(null, 'POST', '/api/auth/verify-email/deadbeef');
+expect('bogus link rejected', r.status, 400);
+r = await call(null, 'POST', `/api/auth/verify-email/${freshLink}`);
+expect('fresh link confirms the email', r.status, 200);
+r = await call(null, 'POST', `/api/auth/verify-email/${freshLink}`);
+expect('link is single-use', r.status, 400);
+r = await call('newbie', 'POST', '/api/orders', { shippingAddress: ADDRESS });
+expect('confirmed customer can order', r.status, 201, `"${r.body.message}"`);
+r = await call('newbie', 'POST', '/api/auth/verify-email/resend');
+expect('no new link once confirmed', r.status, 400);
+const staff = await User.findOne({ email: process.env.SEED_SUPERADMIN_EMAIL });
+expect('staff accounts are confirmed automatically', staff.emailVerified, true);
+process.env.REQUIRE_EMAIL_VERIFICATION = 'false';
+
+console.log('\n--- saved addresses ---');
+r = await call('newbie', 'GET', '/api/auth/addresses');
+expect('address book starts empty', r.body.addresses?.length, 0);
+await call('newbie', 'POST', '/api/cart', { productId: someProduct._id, quantity: 1 });
+r = await call('newbie', 'POST', '/api/orders', { shippingAddress: ADDRESS, saveAddress: true });
+r = await call('newbie', 'GET', '/api/auth/addresses');
+expect('"save this address" at checkout saves it', r.body.addresses?.length, 1);
+expect('  first saved address is the default', r.body.addresses?.[0]?.isDefault, true);
+r = await call('newbie', 'POST', '/api/auth/addresses', { ...ADDRESS });
+expect('the same address is not saved twice', r.body.addresses?.length, 1);
+r = await call('newbie', 'POST', '/api/auth/addresses', { ...ADDRESS, line1: '7 Park Street', city: 'Kolkata', pincode: '700016' });
+expect('a second address can be added', r.body.addresses?.length, 2);
+const second = r.body.addresses[1];
+r = await call('newbie', 'PATCH', `/api/auth/addresses/${second._id}/default`);
+expect('and made the default', r.body.addresses?.find((a) => a._id === second._id)?.isDefault, true);
+expect('  only one default', r.body.addresses?.filter((a) => a.isDefault).length, 1);
+r = await call('newbie', 'POST', '/api/auth/addresses', { ...ADDRESS, pincode: '12' });
+expect('bad pincode refused', r.status, 400);
+r = await call('newbie', 'DELETE', `/api/auth/addresses/${second._id}`);
+expect('deleting the default makes another one default', r.body.addresses?.[0]?.isDefault, true);
+r = await call('y', 'GET', '/api/auth/addresses');
+expect("another customer cannot see these addresses", r.body.addresses?.length ?? 0, 0);
 
 console.log('\n--- order emails ---');
 const p = await Product.findOne({ stock: { $gt: 5 } });

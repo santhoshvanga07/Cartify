@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../api/axios';
+import usePageTitle from '../hooks/usePageTitle';
 
 const ForgotPassword = () => {
+  usePageTitle('Forgot password');
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);

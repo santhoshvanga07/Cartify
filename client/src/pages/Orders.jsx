@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchMyOrders } from '../features/orders/orderSlice';
 import { inr } from '../components/ProductCard';
+import usePageTitle from '../hooks/usePageTitle';
 
 /* One place that decides how a status looks, so it is consistent everywhere. */
 export const STATUS_LABEL = {
@@ -23,6 +24,7 @@ export const statusClass = (s) =>
     : 'text-body';
 
 const Orders = () => {
+  usePageTitle('Your orders');
   const dispatch = useDispatch();
   const { list, loading } = useSelector((state) => state.orders);
 

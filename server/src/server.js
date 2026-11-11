@@ -3,6 +3,7 @@ import app from './app.js';
 import connectDB from './config/db.js';
 import { loadSettings } from './services/settings.service.js';
 import ensureSuperAdmin from './utils/ensureSuperAdmin.js';
+import User from './models/User.js';
 import { expireUnpaidOrders } from './controllers/order.controller.js';
 
 const PORT = process.env.PORT || 5000;
@@ -30,6 +31,10 @@ const startServer = async () => {
    * and products (with photos) from the dashboard.
    */
   await ensureSuperAdmin();
+
+  // Accounts created before email confirmation existed are treated as confirmed,
+  // so existing customers are not suddenly blocked from ordering.
+  await User.updateMany({ emailVerified: { $exists: false } }, { $set: { emailVerified: true } });
 
   // Every 5 minutes: cancel online orders left unpaid, so their stock is sold again.
   const sweep = () =>

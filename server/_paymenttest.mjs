@@ -3,6 +3,9 @@
  * Razorpay endpoints are answered by a stub. Everything else (our own API,
  * the HMAC check) runs for real.
  */
+// These scripts register throwaway customers and order straight away; the
+// email-confirmation step itself is tested in _accounttest.
+process.env.REQUIRE_EMAIL_VERIFICATION ??= 'false';
 import crypto from 'node:crypto';
 process.env.RAZORPAY_KEY_ID = 'rzp_test_dummy';
 process.env.RAZORPAY_KEY_SECRET = 'test_secret_123';

@@ -16,7 +16,8 @@ const ensureStaffUser = async ({ name, email: rawEmail, password, role }) => {
   const existing = await User.findOne({ email });
   if (existing) return existing;
 
-  const user = await User.create({ name, email, password, role });
+  // Staff addresses come from the operator's own config - nothing to confirm.
+  const user = await User.create({ name, email, password, role, emailVerified: true });
   console.log(`${role === 'superadmin' ? 'Super Admin' : 'Admin'} created: ${user.email}`);
   return user;
 };

@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import ProductCard from '../components/ProductCard';
 import { fetchProducts, fetchCategories } from '../features/products/productSlice';
 import VoiceButton from '../components/VoiceButton';
+import usePageTitle from '../hooks/usePageTitle';
 
 const SORTS = [
   { value: 'newest', label: 'Newest' },
@@ -13,6 +14,7 @@ const SORTS = [
 ];
 
 const Products = () => {
+  usePageTitle('Shop');
   // Read the initial category from the URL so /products?category=laptops works
   // and the page stays shareable and bookmarkable.
   const [searchParams] = useSearchParams();

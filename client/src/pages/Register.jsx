@@ -4,8 +4,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { registerUser, clearError } from '../features/auth/authSlice';
 import PasswordField from '../components/PasswordField';
+import usePageTitle from '../hooks/usePageTitle';
 
 const Register = () => {
+  usePageTitle('Create account');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
 
   const { user, loading, error } = useSelector((state) => state.auth);
@@ -14,7 +16,7 @@ const Register = () => {
 
   useEffect(() => {
     if (user) {
-      toast.success(`Welcome, ${user.name}`);
+      toast.success(`Welcome, ${user.name}! Check your email to confirm your address.`);
       navigate('/', { replace: true });
     }
   }, [user, navigate]);

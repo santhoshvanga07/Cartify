@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import usePageTitle from '../../hooks/usePageTitle';
 
 /**
  * Shell for every admin screen: one sidebar, one <Outlet /> for the page.
@@ -7,6 +8,7 @@ import { useSelector } from 'react-redux';
  * only tidiness. The server rejects them regardless of what the menu shows.
  */
 const AdminLayout = () => {
+  usePageTitle('Dashboard');
   const { user } = useSelector((state) => state.auth);
   const isSuper = user?.role === 'superadmin';
 

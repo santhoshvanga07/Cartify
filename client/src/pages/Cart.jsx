@@ -4,8 +4,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { fetchCart, updateCartItem, removeCartItem } from '../features/cart/cartSlice';
 import { inr } from '../components/ProductCard';
+import usePageTitle from '../hooks/usePageTitle';
 
 const Cart = () => {
+  usePageTitle('Your bag');
   const dispatch = useDispatch();
   const { items, totals, loading, error } = useSelector((state) => state.cart);
 

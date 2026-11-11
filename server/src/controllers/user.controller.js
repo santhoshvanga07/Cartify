@@ -29,7 +29,8 @@ export const createAdmin = async (req, res) => {
     return res.status(409).json({ success: false, message: 'Email already registered' });
   }
 
-  const admin = await User.create({ name, email, password, role: 'admin' });
+  // Created by a Super Admin for a colleague: treated as already confirmed.
+  const admin = await User.create({ name, email, password, role: 'admin', emailVerified: true });
   logActivity(req, 'user.create_admin', { type: 'user', id: admin._id, label: admin.email });
 
   res.status(201).json({

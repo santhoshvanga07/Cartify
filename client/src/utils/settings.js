@@ -17,6 +17,7 @@ const DEFAULTS = {
   freeShippingAbove: 5000,
   codEnabled: true,
   returnWindowDays: 7,
+  emailVerificationRequired: true,
 };
 
 let cache = null;

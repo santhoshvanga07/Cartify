@@ -36,6 +36,10 @@ import AdminReports from './pages/admin/AdminReports';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminActivity from './pages/admin/AdminActivity';
 import NotFound from './pages/NotFound';
+import Footer from './components/Footer';
+import VerifyEmailBanner from './components/VerifyEmailBanner';
+import VerifyEmail from './pages/VerifyEmail';
+import { Terms, Privacy, Returns, Shipping, Contact } from './pages/Policies';
 
 function App() {
   const dispatch = useDispatch();
@@ -61,6 +65,7 @@ function App() {
   return (
     <div className="min-h-screen bg-page text-ink">
       <Navbar />
+      <VerifyEmailBanner />
       <Routes>
         {/* Public */}
         <Route path="/" element={<Home />} />
@@ -72,6 +77,12 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
+        <Route path="/verify-email/:token" element={<VerifyEmail />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/returns" element={<Returns />} />
+        <Route path="/shipping" element={<Shipping />} />
+        <Route path="/contact" element={<Contact />} />
 
         {/* Logged-in users only */}
         <Route element={<ProtectedRoute />}>
@@ -113,6 +124,7 @@ function App() {
 
         <Route path="*" element={<NotFound />} />
       </Routes>
+      <Footer />
     </div>
   );
 }

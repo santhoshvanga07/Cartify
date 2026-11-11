@@ -8,9 +8,12 @@ import { fetchMyOrders } from '../features/orders/orderSlice';
 import { inr } from '../components/ProductCard';
 import PasswordField from '../components/PasswordField';
 import { STATUS_LABEL, statusClass } from './Orders';
+import usePageTitle from '../hooks/usePageTitle';
+import AddressBook from '../components/AddressBook';
 
 /* The customer dashboard. Rendered only through ProtectedRoute. */
 const Profile = () => {
+  usePageTitle('Your account');
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const orders = useSelector((state) => state.orders.list);
@@ -25,9 +28,10 @@ const Profile = () => {
     dispatch(fetchMyOrders());
   }, [dispatch]);
 
-  // Money actually spent: cancelled and returned orders do not count.
+  // Money actually spent: cancelled, returned and unpaid online orders do not count.
   const spent = orders
     .filter((o) => !['cancelled', 'returned'].includes(o.status))
+    .filter((o) => o.paymentMethod !== 'razorpay' || o.paymentStatus === 'paid')
     .reduce((sum, o) => sum + o.pricing.total, 0);
   const active = orders.filter((o) => ['placed', 'confirmed', 'shipped'].includes(o.status)).length;
 
@@ -129,6 +133,8 @@ const Profile = () => {
           </ul>
         )}
       </section>
+
+      <AddressBook />
 
       <div className="mt-14 grid gap-6 md:grid-cols-2">
         <form onSubmit={saveName} className="card">

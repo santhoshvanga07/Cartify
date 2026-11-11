@@ -5,9 +5,11 @@ import { toast } from 'react-toastify';
 import { fetchWishlist, removeFromWishlist, moveToCart } from '../features/wishlist/wishlistSlice';
 import { fetchCart } from '../features/cart/cartSlice';
 import { inr } from '../components/ProductCard';
+import usePageTitle from '../hooks/usePageTitle';
 
 /* Rendered only through ProtectedRoute. */
 const Wishlist = () => {
+  usePageTitle('Wishlist');
   const dispatch = useDispatch();
   const { products, loading } = useSelector((state) => state.wishlist);
 

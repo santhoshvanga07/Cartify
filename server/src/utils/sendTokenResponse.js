@@ -41,6 +41,7 @@ const sendTokenResponse = (user, statusCode, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      emailVerified: user.emailVerified,
       createdAt: user.createdAt,
     },
   });

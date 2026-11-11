@@ -4,8 +4,10 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { loginUser, clearError } from '../features/auth/authSlice';
 import PasswordField from '../components/PasswordField';
+import usePageTitle from '../hooks/usePageTitle';
 
 const Login = () => {
+  usePageTitle('Sign in');
   const [form, setForm] = useState({ email: '', password: '' });
 
   const { user, loading, error } = useSelector((state) => state.auth);

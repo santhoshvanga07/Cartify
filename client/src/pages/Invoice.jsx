@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchOrder } from '../features/orders/orderSlice';
 import { inr } from '../components/ProductCard';
 import { useSettings } from '../utils/settings';
+import usePageTitle from '../hooks/usePageTitle';
 
 const date = (d) =>
   new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -17,6 +18,7 @@ const date = (d) =>
  * shows what the customer was charged at the time.
  */
 const Invoice = () => {
+  usePageTitle('Invoice');
   const { id } = useParams();
   const dispatch = useDispatch();
   const { current: order, fetchError: error } = useSelector((state) => state.orders);

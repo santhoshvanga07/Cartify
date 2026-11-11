@@ -10,8 +10,10 @@ import { getRecentlyViewed, recordView } from '../utils/recentlyViewed';
 import Reviews from '../components/Reviews';
 import WishlistButton from '../components/WishlistButton';
 import Questions from '../components/Questions';
+import usePageTitle from '../hooks/usePageTitle';
 
 const ProductDetail = () => {
+  usePageTitle(useSelector((state) => state.products.current?.name));
   const { slug } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();

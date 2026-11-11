@@ -2,11 +2,24 @@ import User from '../models/User.js';
 import crypto from 'node:crypto';
 import sendTokenResponse, { authCookieOptions } from '../utils/sendTokenResponse.js';
 import {
-  notifyWelcome, notifyPasswordReset, notifyPasswordChanged, notifyLogin,
+  notifyWelcome, notifyPasswordReset, notifyPasswordChanged, notifyLogin, notifyVerifyEmail,
 } from '../services/notification.service.js';
 import { logActivity } from '../services/activity.service.js';
 
 const RESET_MINUTES = 30;
+const VERIFY_HOURS = 24;
+
+const clientUrl = () => process.env.CLIENT_URL || 'http://localhost:5173';
+
+/** Orders need a confirmed email unless the operator turned that off (REQUIRE_EMAIL_VERIFICATION=false). */
+export const emailVerificationRequired = () => process.env.REQUIRE_EMAIL_VERIFICATION !== 'false';
+
+/** Issues a fresh confirm-your-email link and saves its hash. */
+const issueVerifyLink = async (user) => {
+  const raw = user.createEmailVerifyToken(VERIFY_HOURS);
+  await user.save({ validateBeforeSave: false });
+  return `${clientUrl()}/verify-email/${raw}`;
+};
 
 /**
  * @desc    Register a new user
@@ -23,7 +36,8 @@ export const register = async (req, res) => {
 
   // NOTE: role is deliberately NOT taken from req.body.
   const user = await User.create({ name, email, password });
-  notifyWelcome(user);
+  // The welcome email doubles as the confirm-your-email email.
+  notifyWelcome(user, await issueVerifyLink(user), VERIFY_HOURS);
 
   sendTokenResponse(user, 201, res);
 };
@@ -163,4 +177,39 @@ export const resetPassword = async (req, res) => {
   logActivity(req, 'auth.password_reset', { type: 'user', id: user._id, label: user.email }, '', user);
 
   sendTokenResponse(user, 200, res);
+};
+
+/**
+ * @desc    Confirm an email address with the emailed link
+ * @route   POST /api/auth/verify-email/:token
+ * @access  Public (the link may be opened on a device where they are not signed in)
+ */
+export const verifyEmail = async (req, res) => {
+  const hashed = crypto.createHash('sha256').update(String(req.params.token)).digest('hex');
+  const user = await User.findOne({ emailVerifyToken: hashed, emailVerifyExpire: { $gt: new Date() } });
+  if (!user) {
+    return res.status(400).json({
+      success: false,
+      message: 'This confirmation link is invalid or has expired. Sign in and ask for a new one.',
+    });
+  }
+  user.emailVerified = true;
+  user.emailVerifyToken = undefined;
+  user.emailVerifyExpire = undefined;
+  await user.save({ validateBeforeSave: false });
+  logActivity(req, 'auth.email_verified', { type: 'user', id: user._id, label: user.email }, '', user);
+  res.status(200).json({ success: true, message: 'Email confirmed - you can now place orders.' });
+};
+
+/**
+ * @desc    Send a new confirmation link
+ * @route   POST /api/auth/verify-email/resend
+ * @access  Private
+ */
+export const resendVerification = async (req, res) => {
+  if (req.user.emailVerified) {
+    return res.status(400).json({ success: false, message: 'Your email is already confirmed' });
+  }
+  notifyVerifyEmail(req.user, await issueVerifyLink(req.user), VERIFY_HOURS);
+  res.status(200).json({ success: true, message: `We sent a new link to ${req.user.email}` });
 };

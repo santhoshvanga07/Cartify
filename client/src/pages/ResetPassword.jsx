@@ -5,8 +5,10 @@ import { toast } from 'react-toastify';
 import api from '../api/axios';
 import { setUser } from '../features/auth/authSlice';
 import PasswordField from '../components/PasswordField';
+import usePageTitle from '../hooks/usePageTitle';
 
 const ResetPassword = () => {
+  usePageTitle('Reset password');
   const { token } = useParams();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');

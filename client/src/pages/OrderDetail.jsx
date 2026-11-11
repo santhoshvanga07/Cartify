@@ -8,10 +8,12 @@ import api from '../api/axios';
 import { useSettings } from '../utils/settings';
 import { inr } from '../components/ProductCard';
 import { STATUS_LABEL, statusClass } from './Orders';
+import usePageTitle from '../hooks/usePageTitle';
 
 const TRACK = ['placed', 'confirmed', 'shipped', 'delivered'];
 
 const OrderDetail = () => {
+  usePageTitle(useSelector((state) => state.orders.current?.orderNumber) || 'Order');
   const { id } = useParams();
   const dispatch = useDispatch();
   const { current, loading, fetchError } = useSelector((state) => state.orders);

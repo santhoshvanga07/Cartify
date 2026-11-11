@@ -12,6 +12,9 @@ import {
   notifyOrderPlaced, notifyStatusChange, notifyStaff, notifyPaymentReceived,
 } from '../services/notification.service.js';
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
+import { checkAddress, cleanAddress } from '../utils/address.js';
+import { saveAddressFor } from './address.controller.js';
+import { emailVerificationRequired } from './auth.controller.js';
 
 /** Puts units back on the shelf, e.g. for a cancelled order or a checkout that failed halfway. */
 const restock = (lines) =>
@@ -28,7 +31,16 @@ const restock = (lines) =>
  */
 export const createOrder = async (req, res) => {
   // req.body is undefined when a request arrives without a JSON body.
-  const { shippingAddress, paymentMethod = 'cod', couponCode } = req.body ?? {};
+  const { shippingAddress, paymentMethod = 'cod', couponCode, saveAddress } = req.body ?? {};
+
+  // Order, shipping and refund emails go to this address - it must be real.
+  if (emailVerificationRequired() && !req.user.emailVerified && req.user.role === 'customer') {
+    return res.status(403).json({
+      success: false,
+      code: 'EMAIL_NOT_VERIFIED',
+      message: `Please confirm your email first - we sent a link to ${req.user.email}.`,
+    });
+  }
 
   if (!['cod', 'razorpay'].includes(paymentMethod)) {
     return res.status(400).json({ success: false, message: 'Invalid payment method' });
@@ -41,18 +53,8 @@ export const createOrder = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Cash on delivery is currently unavailable' });
   }
 
-  const required = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode'];
-  // typeof check first: a number or object here would crash .trim() with a 500.
-  const missing = required.filter((f) => typeof shippingAddress?.[f] !== 'string' || !shippingAddress[f].trim());
-  if (missing.length) {
-    return res.status(400).json({ success: false, message: `Missing address fields: ${missing.join(', ')}` });
-  }
-  if (!/^\d{6}$/.test(shippingAddress.pincode)) {
-    return res.status(400).json({ success: false, message: 'Pincode must be 6 digits' });
-  }
-  if (!/^[6-9]\d{9}$/.test(shippingAddress.phone.replace(/\s/g, ''))) {
-    return res.status(400).json({ success: false, message: 'Enter a valid 10-digit mobile number' });
-  }
+  const addressProblem = checkAddress(shippingAddress);
+  if (addressProblem) return res.status(400).json({ success: false, message: addressProblem });
 
   const cart = await Cart.findOne({ user: req.user.id }).populate('items.product');
   const lines = (cart?.items || []).filter((i) => i.product && i.product.isActive);
@@ -127,7 +129,7 @@ export const createOrder = async (req, res) => {
     order = await Order.create({
       user: req.user.id,
       items,
-      shippingAddress,
+      shippingAddress: cleanAddress(shippingAddress),
       pricing: {
         subtotal: pricing.subtotal,
         discount: pricing.discount,
@@ -151,6 +153,9 @@ export const createOrder = async (req, res) => {
 
   // The cart has become an order; empty it.
   await Cart.findOneAndUpdate({ user: req.user.id }, { items: [] });
+
+  // "Save this address for next time" - best effort: a full address book must not fail the order.
+  if (saveAddress === true) await saveAddressFor(req.user.id, shippingAddress).catch(() => {});
 
   /**
    * Online payment: the order exists (stock is held) but is unpaid. We hand

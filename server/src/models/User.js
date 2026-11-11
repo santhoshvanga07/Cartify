@@ -2,6 +2,20 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
+/** A saved delivery address. Checkout and the address book validate it the same way (utils/address.js). */
+const savedAddressSchema = new mongoose.Schema({
+  fullName: { type: String, required: true, trim: true, maxlength: 100 },
+  phone: { type: String, required: true, trim: true, maxlength: 15 },
+  line1: { type: String, required: true, trim: true, maxlength: 200 },
+  line2: { type: String, trim: true, default: '', maxlength: 200 },
+  city: { type: String, required: true, trim: true, maxlength: 100 },
+  state: { type: String, required: true, trim: true, maxlength: 100 },
+  pincode: { type: String, required: true, trim: true, match: /^\d{6}$/ },
+  isDefault: { type: Boolean, default: false },
+});
+
+export const MAX_ADDRESSES = 5;
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -42,6 +56,22 @@ const userSchema = new mongoose.Schema(
     // must not hand out working reset links.
     resetPasswordToken: { type: String, select: false },
     resetPasswordExpire: { type: Date, select: false },
+
+    /**
+     * Has the customer clicked the link we emailed? Every order, shipping and
+     * refund email goes to this address, so it must be real before they can
+     * order. Only the SHA-256 of the link's token is stored, like reset tokens.
+     */
+    emailVerified: { type: Boolean, default: false },
+    emailVerifyToken: { type: String, select: false },
+    emailVerifyExpire: { type: Date, select: false },
+
+    // Saved delivery addresses, so checkout is one tap for returning customers.
+    addresses: {
+      type: [savedAddressSchema],
+      default: [],
+      validate: [(list) => list.length <= MAX_ADDRESSES, `You can save up to ${MAX_ADDRESSES} addresses`],
+    },
   },
   { timestamps: true } // adds createdAt and updatedAt automatically
 );
@@ -74,6 +104,14 @@ userSchema.methods.createPasswordResetToken = function (minutes) {
   const raw = crypto.randomBytes(32).toString('hex');
   this.resetPasswordToken = crypto.createHash('sha256').update(raw).digest('hex');
   this.resetPasswordExpire = new Date(Date.now() + minutes * 60 * 1000);
+  return raw;
+};
+
+/** Same pattern as the reset token: the raw value goes in the email, only its hash is stored. */
+userSchema.methods.createEmailVerifyToken = function (hours = 24) {
+  const raw = crypto.randomBytes(32).toString('hex');
+  this.emailVerifyToken = crypto.createHash('sha256').update(raw).digest('hex');
+  this.emailVerifyExpire = new Date(Date.now() + hours * 60 * 60 * 1000);
   return raw;
 };
 

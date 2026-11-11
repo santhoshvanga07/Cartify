@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import ProductCard from '../components/ProductCard';
 import VoiceButton, { voiceSupported } from '../components/VoiceButton';
 import { aiSearch, resetChat } from '../features/ai/aiSlice';
+import usePageTitle from '../hooks/usePageTitle';
 
 const EXAMPLES = [
   'Show me laptops under ₹60,000',
@@ -31,6 +32,7 @@ const Interpretation = ({ filters }) => {
 };
 
 const Assistant = () => {
+  usePageTitle('Shopping assistant');
   const [input, setInput] = useState('');
   const dispatch = useDispatch();
   const { turns, loading } = useSelector((state) => state.ai);

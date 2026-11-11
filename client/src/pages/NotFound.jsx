@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
+import usePageTitle from '../hooks/usePageTitle';
 
 /** Any URL that matches no route - better than a blank page under the navbar. */
-const NotFound = () => (
+const NotFound = () => {
+  usePageTitle('Page not found');
+  return (
   <div className="mx-auto max-w-lg px-6 py-24 text-center">
     <p className="text-xs uppercase tracking-[0.2em] text-accent">404</p>
     <h1 className="display mt-4 text-4xl text-ink">Page not found</h1>
@@ -11,6 +14,7 @@ const NotFound = () => (
       <Link to="/products" className="btn btn-ghost">Shop</Link>
     </div>
   </div>
-);
+  );
+};
 
 export default NotFound;

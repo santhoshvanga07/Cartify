@@ -12,12 +12,27 @@ const rupees = (n) => `Rs ${Number(n).toLocaleString('en-IN', { maximumFractionD
 const button = (href, label) =>
   `<p style="margin:24px 0"><a href="${href}" style="background:#1f8a5b;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:14px">${esc(label)}</a></p>`;
 
-export const notifyWelcome = (user) =>
+export const notifyWelcome = (user, verifyUrl, hours = 24) =>
   queueEmail({
     to: user.email,
-    subject: 'Welcome to Cartify',
-    html: `<p>Hi ${esc(user.name)}, your account is ready.</p>${button(`${clientUrl()}/products`, 'Start shopping')}`,
-    text: `Hi ${user.name}, your Cartify account is ready. ${clientUrl()}/products`,
+    subject: 'Welcome to Cartify - please confirm your email',
+    title: 'Welcome to Cartify',
+    html: `<p>Hi ${esc(user.name)}, your account is ready. One last step: confirm this is your email address,
+      so your order, shipping and refund updates reach you.</p>
+      ${button(verifyUrl, 'Confirm my email')}
+      <p style="font-size:13px;color:#6b6860">The link works for ${hours} hours. You can browse and fill your bag meanwhile; placing an order needs a confirmed email.</p>`,
+    text: `Hi ${user.name}, your Cartify account is ready. Confirm your email address: ${verifyUrl}\nThe link works for ${hours} hours.`,
+  });
+
+export const notifyVerifyEmail = (user, verifyUrl, hours = 24) =>
+  queueEmail({
+    to: user.email,
+    subject: 'Confirm your email for Cartify',
+    title: 'Confirm your email',
+    html: `<p>Hi ${esc(user.name)}, here is your new link to confirm ${esc(user.email)}.</p>
+      ${button(verifyUrl, 'Confirm my email')}
+      <p style="font-size:13px;color:#6b6860">The link works for ${hours} hours. If you did not ask for it, you can ignore this email.</p>`,
+    text: `Confirm your email for Cartify: ${verifyUrl}\nThe link works for ${hours} hours.`,
   });
 
 export const notifyPasswordReset = (user, resetUrl, minutes) =>
@@ -227,9 +242,30 @@ export const notifyStaff = async (subject, text) => {
   try {
     const staff = await User.find({ role: { $in: ['admin', 'superadmin'] }, isActive: true }).select('email');
     for (const s of staff) {
-      queueEmail({ to: s.email, subject: `[Cartify admin] ${subject}`, html: `<p>${esc(text)}</p>`, text });
+      queueEmail({ to: s.email, subject: `[Cartify admin] ${subject}`, html: `<p style="white-space:pre-wrap">${esc(text)}</p>`, text });
     }
   } catch (err) {
     console.error(`Staff alert failed: ${err.message}`); // never let an alert break the request
   }
+};
+
+/**
+ * Contact form: the message goes to the store's staff (reply-to the customer),
+ * and the customer gets a copy so they know it arrived.
+ */
+export const notifyContactMessage = async ({ name, email, orderNumber, message }) => {
+  const about = orderNumber ? ` about order ${orderNumber}` : '';
+  await notifyStaff(
+    `Message from ${name}${about}`,
+    `${name} <${email}> wrote${about}:\n\n${message}\n\nReply to them at ${email}.`
+  );
+  queueEmail({
+    to: email,
+    subject: 'We have your message',
+    title: 'Thanks for getting in touch',
+    html: `<p>Hi ${esc(name)}, thanks for writing to us${esc(about)}. We usually reply within one working day.</p>
+      <p style="margin-top:16px;color:#8a877f;font-size:13px">Your message:</p>
+      <p style="white-space:pre-wrap;border-left:3px solid #ece9e2;padding-left:12px">${esc(message)}</p>`,
+    text: `Hi ${name}, thanks for writing to us${about}. We usually reply within one working day.\n\nYour message:\n${message}`,
+  });
 };

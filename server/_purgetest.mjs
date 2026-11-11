@@ -1,3 +1,6 @@
+// These scripts register throwaway customers and order straight away; the
+// email-confirmation step itself is tested in _accounttest.
+process.env.REQUIRE_EMAIL_VERIFICATION ??= 'false';
 import { startHarness, ADDRESS } from './_harness.mjs';
 import seedOrders from './tests/fixtures/seedOrders.js';
 import purgeDemoData from './scripts/purgeDemoData.js';

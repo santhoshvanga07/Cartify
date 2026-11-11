@@ -19,6 +19,7 @@ import paymentRoutes from './routes/payment.routes.js';
 import questionRoutes from './routes/question.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import reportRoutes from './routes/report.routes.js';
+import contactRoutes from './routes/contact.routes.js';
 import { refreshSettings } from './services/settings.service.js';
 import { notFound, errorHandler } from './middleware/error.middleware.js';
 import { apiLimiter } from './middleware/rateLimit.middleware.js';
@@ -73,6 +74,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/contact', contactRoutes);
 
 /* ---------- Error handling (must be LAST) ---------- */
 
