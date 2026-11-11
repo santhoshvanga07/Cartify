@@ -1,0 +1,18 @@
+%% Figure 3.1 - Scrum process as applied to Cartify
+flowchart TB
+    subgraph PLAN["1 · Plan"]
+        direction LR
+        PB[("Product backlog<br/>26 modules + change requests")] --> SP["Sprint planning<br/>pick top items, split into tasks"] --> SB[("Sprint backlog")]
+    end
+    subgraph BUILD["2 · Build (one sprint)"]
+        direction LR
+        DS(["Daily scrum<br/>done · next · blockers"]) -.-> DEV["Design and code<br/>API + web app"] --> TEST["Automated API tests<br/>+ lint + build"]
+        TEST -- "fails: fix" --> DEV
+    end
+    subgraph SHIP["3 · Deliver and inspect"]
+        direction LR
+        INC["Increment<br/>pushed to main"] --> DEP["Auto-deploy<br/>Vercel + Render"] --> REV["Sprint review<br/>demo on live site"] --> RET["Retrospective<br/>keep / change"]
+    end
+    SB --> DS
+    TEST -- "passes: Done" --> INC
+    REV -- "feedback and bugs become new backlog items" --> PB
