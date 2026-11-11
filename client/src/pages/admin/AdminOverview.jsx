@@ -126,7 +126,8 @@ const AdminOverview = () => {
         {/* Category sales */}
         <div className="card">
           <h2 className="text-sm font-medium text-ink">Revenue by category</h2>
-          <div className="mt-5 h-56">
+          {cats.length === 0 && <p className="mt-4 text-sm text-muted">No sales yet.</p>}
+          <div className={`mt-5 h-56 ${cats.length === 0 ? 'hidden' : ''}`}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={cats} layout="vertical" margin={{ left: 20, right: 8 }}>
                 <CartesianGrid stroke="var(--color-line)" horizontal={false} />
@@ -142,6 +143,7 @@ const AdminOverview = () => {
         {/* Top products */}
         <div className="card">
           <h2 className="text-sm font-medium text-ink">Best sellers</h2>
+          {top.length === 0 && <p className="mt-4 text-sm text-muted">No sales yet.</p>}
           <ol className="mt-4 space-y-3">
             {top.slice(0, 6).map((p, i) => (
               <li key={p._id} className="flex items-baseline justify-between gap-3 text-sm">
