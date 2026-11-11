@@ -92,6 +92,9 @@ expect('one review per user per product', r.status, 409, `"${r.body.message}"`);
 r = await call('carol', 'POST', `/api/products/${product.slug}/reviews`, { rating: 9, comment: 'Out of range' });
 expect('rating above 5 rejected', r.status, 400, `"${r.body.message}"`);
 
+r = await call('carol', 'POST', `/api/products/${product.slug}/reviews`, { rating: 4.5, comment: 'Half a star' });
+expect('half-star rating rejected', r.status, 400, `"${r.body.message}"`);
+
 r = await call('carol', 'POST', `/api/products/${product.slug}/reviews`, { rating: 4 });
 expect('missing comment rejected', r.status, 400);
 

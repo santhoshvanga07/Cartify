@@ -10,8 +10,15 @@ process.env.RAZORPAY_KEY_SECRET = 'test_secret_123';
 const realFetch = globalThis.fetch;
 let rzpCount = 0;
 const refunds = [];
+// Payments Razorpay has CAPTURED, per Razorpay order - what GET /orders/:id/payments returns.
+const captured = {};
 globalThis.fetch = async (url, opts) => {
   const u = String(url);
+  const listing = u.match(/^https:\/\/api\.razorpay\.com\/v1\/orders\/([^/]+)\/payments$/);
+  if (listing) {
+    const items = (captured[listing[1]] || []).map((id) => ({ id, status: 'captured' }));
+    return new Response(JSON.stringify({ items }));
+  }
   if (u === 'https://api.razorpay.com/v1/orders') {
     const body = JSON.parse(opts.body);
     return new Response(JSON.stringify({ id: `order_TEST${++rzpCount}`, amount: body.amount, currency: 'INR' }));
@@ -72,16 +79,25 @@ expect('order marked failed', (await Order.findById(order._id)).paymentStatus, '
 r = await call('payer', 'POST', `/api/payments/${order._id}/retry`);
 expect('retry gives a fresh razorpay order', r.body.razorpay?.orderId, 'order_TEST2');
 
+// The shopper still had the FIRST checkout window open and paid there. That
+// money is real, so it must be recorded, not rejected.
 r = await call('payer', 'POST', `/api/payments/${order._id}/verify`, {
   razorpay_order_id: 'order_TEST1', razorpay_payment_id: 'pay_2', razorpay_signature: sign('order_TEST1', 'pay_2'),
 });
-expect('stale razorpay order rejected after retry', r.status, 400);
+expect('payment in an earlier checkout window accepted', r.status, 200);
+expect('order now paid', r.body.order?.paymentStatus, 'paid');
 
+r = await call('payer', 'POST', `/api/payments/${order._id}/verify`, {
+  razorpay_order_id: 'order_TEST1', razorpay_payment_id: 'pay_2', razorpay_signature: sign('order_TEST1', 'pay_2'),
+});
+expect('same payment reported twice is fine', r.status, 200);
+
+// ...and then ALSO paid in the second window: the extra payment goes back.
 r = await call('payer', 'POST', `/api/payments/${order._id}/verify`, {
   razorpay_order_id: 'order_TEST2', razorpay_payment_id: 'pay_3', razorpay_signature: sign('order_TEST2', 'pay_3'),
 });
-expect('genuine signature accepted', r.status, 200);
-expect('order now paid', r.body.order?.paymentStatus, 'paid');
+expect('second payment for a paid order refused', r.status, 409, `"${r.body.message}"`);
+expect('second payment refunded', refunds.some((u) => u.includes('/payments/pay_3/refund')), true);
 
 r = await call('payer', 'POST', `/api/payments/${order._id}/retry`);
 expect('cannot pay twice', r.status, 409);
@@ -90,7 +106,55 @@ console.log('\n--- refund on cancel ---');
 r = await call('payer', 'PATCH', `/api/orders/${order._id}/cancel`);
 expect('paid order cancelled', r.status, 200);
 expect('payment refunded', r.body.order?.paymentStatus, 'refunded');
-expect('refund sent to razorpay for pay_3', refunds[0]?.includes('/payments/pay_3/refund'), true);
+expect('refund sent to razorpay for pay_2', refunds.some((u) => u.includes('/payments/pay_2/refund')), true);
+expect('cancel response has the owner populated', r.body.order?.user?.email, 'payer@test.com');
+
+r = await call('payer', 'PATCH', `/api/orders/${order._id}/cancel`);
+expect('cancelling twice is refused', r.status, 409);
+
+console.log('\n--- money that arrived but was never verified ---');
+const placeOnline = async () => {
+  await call('payer', 'POST', '/api/cart', { productId: p._id, quantity: 1 });
+  const res = await call('payer', 'POST', '/api/orders', { shippingAddress: ADDRESS, paymentMethod: 'razorpay' });
+  return res.body;
+};
+let placed = await placeOnline();
+// Razorpay captured pay_lost, but the browser never told us (closed tab, lost signal).
+captured[placed.razorpay.orderId] = ['pay_lost'];
+r = await call('sa', 'PATCH', `/api/orders/${placed.order._id}/status`, { status: 'confirmed' });
+expect('unpaid online order cannot be confirmed for shipping', r.status, 409, `"${r.body.message}"`);
+r = await call('payer', 'PATCH', `/api/orders/${placed.order._id}/cancel`);
+expect('unpaid-looking order cancelled', r.status, 200);
+expect('captured payment found and refunded', refunds.some((u) => u.includes('/payments/pay_lost/refund')), true);
+expect('order shows refunded', r.body.order?.paymentStatus, 'refunded');
+
+placed = await placeOnline();
+r = await call('payer', 'PATCH', `/api/orders/${placed.order._id}/cancel`);
+r = await call('payer', 'POST', `/api/payments/${placed.order._id}/verify`, {
+  razorpay_order_id: placed.razorpay.orderId, razorpay_payment_id: 'pay_late',
+  razorpay_signature: sign(placed.razorpay.orderId, 'pay_late'),
+});
+expect('payment after cancellation refused', r.status, 409, `"${r.body.message}"`);
+expect('late payment refunded', refunds.some((u) => u.includes('/payments/pay_late/refund')), true);
+
+console.log('\n--- unpaid online orders expire ---');
+const { expireUnpaidOrders } = await import('./src/controllers/order.controller.js');
+const stale = await placeOnline();
+const paidLate = await placeOnline();
+captured[paidLate.razorpay.orderId] = ['pay_found'];
+const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+await Order.collection.updateMany(
+  { _id: { $in: [stale.order._id, paidLate.order._id].map((id) => new (Order.base.Types.ObjectId)(id)) } },
+  { $set: { createdAt: hourAgo } }
+);
+const stockBeforeSweep = (await Product.findById(p._id)).stock;
+const n = await expireUnpaidOrders(30);
+expect('one abandoned order cancelled', n, 1);
+expect('abandoned order is cancelled', (await Order.findById(stale.order._id)).status, 'cancelled');
+expect('its stock is back on sale', (await Product.findById(p._id)).stock, stockBeforeSweep + 1);
+const found = await Order.findById(paidLate.order._id);
+expect('order whose payment did arrive is marked paid, not cancelled', `${found.status}/${found.paymentStatus}`, 'placed/paid');
+expect('fresh unpaid orders are left alone', await expireUnpaidOrders(30), 0);
 
 console.log('\n--- returns ---');
 await call('payer', 'POST', '/api/cart', { productId: p._id, quantity: 1 });

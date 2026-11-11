@@ -59,6 +59,15 @@ expect('cannot exceed stock', r.status, 409, `"${r.body.message}"`);
 r = await call('POST', '/api/cart', { productId: lowStock._id, quantity: lowStock.stock + 1 });
 expect('cannot over-order low stock', r.status, 409);
 
+console.log('\n--- stock fell below what is already in the bag ---');
+// The bag holds 2; the shop now has only 1. The shopper must be able to step down.
+await Product.updateOne({ _id: inStock._id }, { stock: 1 });
+r = await call('PATCH', `/api/cart/${inStock._id}`, { quantity: 3 });
+expect('raising above stock still refused', r.status, 409);
+r = await call('PATCH', `/api/cart/${inStock._id}`, { quantity: 1 });
+expect('lowering towards the new stock allowed', r.status, 200);
+await Product.updateOne({ _id: inStock._id }, { stock: inStock.stock });
+
 console.log('\n--- validation & auth ---');
 r = await call('PATCH', `/api/cart/${inStock._id}`, { quantity: 0 });
 expect('quantity 0 rejected', r.status, 400);

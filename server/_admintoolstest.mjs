@@ -47,12 +47,21 @@ r = await call('sa', 'PUT', '/api/settings', { codEnabled: false, onlinePaymentE
 expect('cannot disable every payment method', r.status, 400);
 
 r = await call('sa', 'PUT', '/api/settings', { codEnabled: false });
+expect('COD must stay on while Razorpay has no keys', r.status, 400, `"${r.body.message}"`);
+
+// With (test) Razorpay keys, online payment really works, so COD may be switched off.
+process.env.RAZORPAY_KEY_ID = 'rzp_test_dummy';
+process.env.RAZORPAY_KEY_SECRET = 'test_secret_123';
+r = await call('sa', 'PUT', '/api/settings', { codEnabled: false });
+expect('COD can be switched off once online payment works', r.status, 200);
 await call('buyer', 'POST', '/api/cart', { productId: p._id, quantity: 1 });
 r = await call('buyer', 'POST', '/api/orders', { shippingAddress: ADDRESS, paymentMethod: 'cod' });
 expect('COD refused when disabled', r.status, 400, `"${r.body.message}"`);
 r = await call(null, 'GET', '/api/payments/config');
 expect('payment config reports COD off', r.body.cod, false);
 await call('sa', 'PUT', '/api/settings', { codEnabled: true, gstRate: 18, shippingFlat: 99, freeShippingAbove: 5000 });
+delete process.env.RAZORPAY_KEY_ID;
+delete process.env.RAZORPAY_KEY_SECRET;
 
 console.log('\n--- activity log ---');
 await call('x', 'POST', '/api/auth/login', { email: 'buyer@test.com', password: 'wrong-password' });

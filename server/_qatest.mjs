@@ -39,6 +39,13 @@ r = await call('sa', 'POST', `/api/questions/${qid}/answers`, { text: 'Confirmed
 const staffAns = r.body.question.answers.find((a) => a.isStaff);
 expect('staff answer badged', Boolean(staffAns), true);
 
+// One person may not fill every answer slot.
+await call('other', 'POST', `/api/questions/${qid}/answers`, { text: 'Answer one from other.' });
+await call('other', 'POST', `/api/questions/${qid}/answers`, { text: 'Answer two from other.' });
+await call('other', 'POST', `/api/questions/${qid}/answers`, { text: 'Answer three from other.' });
+r = await call('other', 'POST', `/api/questions/${qid}/answers`, { text: 'Answer four from other.' });
+expect('a fourth answer from the same person is refused', r.status, 409);
+
 console.log('\n--- voting ---');
 r = await call('asker', 'POST', `/api/questions/${qid}/upvote`);
 expect('cannot upvote own question', r.status, 400);
