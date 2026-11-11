@@ -88,6 +88,14 @@ Staff (admins) also get an alert for every new order and return request.
 When deployed, add the same five variables in your host's dashboard (on Render: the service →
 **Environment**), not in a committed file. Gmail allows roughly 500 emails a day, plenty for a demo.
 
+### Email confirmation
+
+New customers get a "Confirm my email" link in their welcome email and must click it before placing their
+first order (browsing and filling the bag work meanwhile; a banner offers a new link). Staff accounts, and
+accounts created before this feature, count as confirmed. For local experiments only, switch it off with
+`REQUIRE_EMAIL_VERIFICATION=false` in `server/.env`. Without SMTP settings the link is printed in the API
+console - copy it into the browser.
+
 ### Deploying the web app
 
 `client/vercel.json` (Vercel) and `client/public/_redirects` (Netlify) send every URL to the app, so links in
@@ -119,9 +127,9 @@ It only touches records it can identify as demo data; staff, settings and anythi
 
 | # | Module | Where |
 |---|---|---|
-| 01 | Authentication | JWT in an httpOnly cookie, register/login/logout, forgot & reset password (hashed single-use tokens), change password signs out other devices |
-| 02 | Customer | Profile: edit name, change password |
-| 03 | Product | CRUD, soft delete, Cloudinary images, per-category specifications |
+| 01 | Authentication | JWT in an httpOnly cookie, register/login/logout, email confirmation before the first order, sign-in alert emails, forgot & reset password (hashed single-use tokens), change password signs out other devices |
+| 02 | Customer | Profile: edit name, change password, saved delivery addresses (up to 5, one default) |
+| 03 | Product | CRUD, soft delete and restore, Cloudinary images, per-category specifications, sizes/colours with their own stock |
 | 04 | Category | CRUD; refuses to delete a category still in use |
 | 05 | Search | Keyword search over a curated search index |
 | 06 | Filter & Sorting | Category, price, rating, stock; newest / price / rating |
@@ -129,7 +137,7 @@ It only touches records it can identify as demo data; staff, settings and anythi
 | 08 | Wishlist | Save, move to bag, count in the navbar |
 | 09 | Checkout | Address validation, coupons, GST and shipping computed on the server |
 | 10 | Payment | Cash on delivery; Razorpay with server-side signature verification, retry and refunds; unpaid online orders cancel themselves after 30 minutes (after checking with Razorpay that no money arrived) |
-| 11 | Orders | Tracking, cancel, return requests within the return window, GST tax invoice (print / PDF) |
+| 11 | Orders | Status tracking with courier, tracking number/link and expected delivery, cancel, return requests within the return window, GST tax invoice (print / PDF) |
 | 12 | Review & Rating | Verified-purchase badge, helpful votes, reporting |
 | 13 | AI Shopping Assistant | Chat that turns plain English into a real catalogue search |
 | 14 | AI Product Comparison | Pros, cons and best value from the products' real specs |
@@ -144,7 +152,7 @@ It only touches records it can identify as demo data; staff, settings and anythi
 | 23 | Security | bcrypt, RBAC on every route, rate limits, Helmet, CORS, input validation, audit log |
 | 24 | Settings | Store/invoice details, GST rate, shipping fee and threshold, payment methods, return window |
 | 25 | Reports | Daily sales, orders and product performance — on screen and as CSV |
-| 26 | Miscellaneous | Voice search (Web Speech API), printable invoices, recently viewed |
+| 26 | Miscellaneous | Voice search (Web Speech API), printable invoices, recently viewed, Terms / Privacy / Returns / Shipping pages, contact form, low-stock alerts to staff |
 
 ## Tests
 
@@ -164,6 +172,8 @@ npm run test:reco
 npm run test:images         # product photos, Cloudinary stubbed
 npm run test:purge
 npm run test:fixes          # product edits, slugs, categories, filters, validation, analytics
+npm run test:variants       # sizes/colours: choosing, stock per size, races, admin edits
+npm run test:shipping       # courier details, low-stock alerts, contact form
 node _ordertest.mjs && node _carttest.mjs && node _reviewtest.mjs
 ```
 

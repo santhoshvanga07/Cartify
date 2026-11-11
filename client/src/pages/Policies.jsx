@@ -196,10 +196,13 @@ export const Privacy = () => {
 export const Contact = () => {
   const s = useSettings();
   const user = useSelector((state) => state.auth.user);
-  const [form, setForm] = useState({ name: user?.name || '', email: user?.email || '', orderNumber: '', message: '' });
+  // name/email stay null until typed, so a signed-in customer's details fill in
+  // even when they load after the page (a direct visit or a refresh).
+  const [typed, setForm] = useState({ name: null, email: null, orderNumber: '', message: '' });
+  const form = { ...typed, name: typed.name ?? user?.name ?? '', email: typed.email ?? user?.email ?? '' };
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const set = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const set = (e) => setForm({ ...typed, [e.target.name]: e.target.value });
 
   const submit = async (e) => {
     e.preventDefault();

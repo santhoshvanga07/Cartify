@@ -81,7 +81,7 @@ const Orders = () => {
             </div>
 
             <p className="mt-3 truncate text-xs text-body">
-              {o.items.map((i) => `${i.name} × ${i.quantity}`).join(', ')}
+              {o.items.map((i) => `${i.name}${i.variant ? ` (${i.variant})` : ''} × ${i.quantity}`).join(', ')}
             </p>
           </Link>
         ))}

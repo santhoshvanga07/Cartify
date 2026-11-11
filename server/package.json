@@ -24,7 +24,9 @@
     "test:reco": "node _recotest.mjs",
     "test:images": "node _imagetest.mjs",
     "test:purge": "node _purgetest.mjs",
-    "test:fixes": "node _fixestest.mjs"
+    "test:fixes": "node _fixestest.mjs",
+    "test:variants": "node _varianttest.mjs",
+    "test:shipping": "node _shippingtest.mjs"
   },
   "keywords": [
     "ecommerce",

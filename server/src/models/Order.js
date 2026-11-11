@@ -16,6 +16,8 @@ const orderItemSchema = new mongoose.Schema(
     slug: { type: String, required: true },
     brand: { type: String, required: true },
     image: { type: String, default: '' },
+    variant: { type: String, default: '' }, // e.g. "UK 8" - '' when the product has no options
+    optionName: { type: String, default: '' }, // e.g. "Size", for showing "Size: UK 8"
     price: { type: Number, required: true }, // price AT PURCHASE TIME
     quantity: { type: Number, required: true, min: 1 },
   },
@@ -114,6 +116,15 @@ const orderSchema = new mongoose.Schema(
     },
 
     status: { type: String, enum: ORDER_STATUSES, default: 'placed', index: true },
+
+    // Filled in by staff when the parcel leaves: shown on the order page and in the "shipped" email.
+    shipment: {
+      courier: { type: String, trim: true, maxlength: 60 },
+      trackingNumber: { type: String, trim: true, maxlength: 60 },
+      trackingUrl: { type: String, trim: true, maxlength: 300 },
+      expectedDelivery: Date,
+      shippedAt: Date,
+    },
 
     // Starts the return window. Set once, the first time the order is delivered.
     deliveredAt: Date,

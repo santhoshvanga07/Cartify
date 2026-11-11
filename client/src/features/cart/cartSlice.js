@@ -17,10 +17,13 @@ const cartThunk = (name, fn) =>
 
 export const fetchCart = cartThunk('fetch', () => api.get('/cart'));
 export const addToCart = cartThunk('add', (payload) => api.post('/cart', payload));
-export const updateCartItem = cartThunk('update', ({ productId, quantity }) =>
-  api.patch(`/cart/${productId}`, { quantity })
+// `variant` is the chosen size/colour ('' for products without options).
+export const updateCartItem = cartThunk('update', ({ productId, variant = '', quantity }) =>
+  api.patch(`/cart/${productId}`, { quantity }, { params: variant ? { variant } : {} })
 );
-export const removeCartItem = cartThunk('remove', (productId) => api.delete(`/cart/${productId}`));
+export const removeCartItem = cartThunk('remove', ({ productId, variant = '' }) =>
+  api.delete(`/cart/${productId}`, { params: variant ? { variant } : {} })
+);
 export const clearCart = cartThunk('clear', () => api.delete('/cart'));
 
 const EMPTY_TOTALS = { subtotal: 0, discount: 0, gst: 0, shipping: 0, total: 0, itemCount: 0 };

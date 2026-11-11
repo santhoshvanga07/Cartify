@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { fetchWishlist, removeFromWishlist, moveToCart } from '../features/wishlist/wishlistSlice';
@@ -11,6 +11,7 @@ import usePageTitle from '../hooks/usePageTitle';
 const Wishlist = () => {
   usePageTitle('Wishlist');
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { products, loading } = useSelector((state) => state.wishlist);
 
   useEffect(() => {
@@ -18,6 +19,10 @@ const Wishlist = () => {
   }, [dispatch]);
 
   const move = async (p) => {
+    if (p.variants?.length) {
+      toast.info(`Choose a ${(p.optionName || 'size').toLowerCase()} first`);
+      return navigate(`/products/${p.slug}`);
+    }
     const result = await dispatch(moveToCart(p._id));
     if (moveToCart.fulfilled.match(result)) {
       dispatch(fetchCart()); // the bag count in the navbar changed too
@@ -80,7 +85,7 @@ const Wishlist = () => {
                 disabled={p.stock === 0 || loading}
                 className="btn btn-primary"
               >
-                Move to bag
+                {p.variants?.length ? `Choose ${(p.optionName || 'size').toLowerCase()}` : 'Move to bag'}
               </button>
               <button onClick={() => remove(p)} className="text-xs text-body hover:text-red-600">
                 Remove

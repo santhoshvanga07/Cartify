@@ -110,10 +110,13 @@ const Invoice = () => {
           </thead>
           <tbody>
             {order.items.map((i) => (
-              <tr key={i.slug} className="border-t border-line">
+              <tr key={`${i.slug}:${i.variant || ''}`} className="border-t border-line">
                 <td className="py-3 pr-4 text-ink">
                   {i.name}
-                  <span className="block text-xs text-muted">{i.brand}</span>
+                  <span className="block text-xs text-muted">
+                    {i.brand}
+                    {i.variant && ` · ${i.optionName || 'Size'}: ${i.variant}`}
+                  </span>
                 </td>
                 <td className="py-3 text-right text-body">{i.quantity}</td>
                 <td className="py-3 text-right text-body">{inr(i.price)}</td>

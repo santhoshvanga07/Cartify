@@ -64,12 +64,19 @@ const AdminOrders = () => {
     load();
   }, [load]);
 
-  const advance = async (order, next) => {
+  // "Mark shipped" first asks for the courier details for that one order.
+  const COURIERS = ['Delhivery', 'Blue Dart', 'DTDC', 'Ekart', 'India Post', 'Xpressbees', 'Other'];
+  const [shipFor, setShipFor] = useState(null);
+  const [ship, setShip] = useState({ courier: 'Delhivery', trackingNumber: '', trackingUrl: '', expectedDelivery: '' });
+  const setShipField = (e) => setShip({ ...ship, [e.target.name]: e.target.value });
+
+  const advance = async (order, next, shipment) => {
     setBusyId(order._id);
     try {
-      const { data } = await api.patch(`/orders/${order._id}/status`, { status: next });
+      const { data } = await api.patch(`/orders/${order._id}/status`, { status: next, ...(shipment && { shipment }) });
       setOrders((list) => list.map((o) => (o._id === order._id ? data.order : o)));
       toast.success(`${order.orderNumber} → ${next}`);
+      setShipFor(null);
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not update');
     } finally {
@@ -144,7 +151,7 @@ const AdminOrders = () => {
             </div>
 
             <p className="mt-3 truncate text-xs text-body">
-              {o.items.map((i) => `${i.name} × ${i.quantity}`).join(', ')}
+              {o.items.map((i) => `${i.name}${i.variant ? ` (${i.variant})` : ''} × ${i.quantity}`).join(', ')}
             </p>
             {o.status === 'return_requested' && o.returnReason && (
               <p className="mt-2 text-xs text-ink">Return reason: {o.returnReason}</p>
@@ -160,13 +167,54 @@ const AdminOrders = () => {
                   <button
                     key={next}
                     disabled={busyId === o._id}
-                    onClick={() => advance(o, next)}
+                    onClick={() => {
+                      if (next !== 'shipped') return advance(o, next);
+                      setShip({ courier: 'Delhivery', trackingNumber: '', trackingUrl: '', expectedDelivery: '' });
+                      setShipFor(o._id);
+                    }}
                     className={`btn ${next === 'cancelled' || (o.status === 'return_requested' && next === 'delivered') ? 'btn-ghost' : 'btn-primary'} !px-3 !py-1.5 !text-xs`}
                   >
                     {actionLabel(o.status, next)}
                   </button>
                 ))}
               </div>
+            )}
+
+            {shipFor === o._id && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  advance(o, 'shipped', ship);
+                }}
+                className="mt-4 grid gap-3 rounded-xl bg-page p-4 sm:grid-cols-2"
+              >
+                <div>
+                  <label className="label" htmlFor={`courier-${o._id}`}>Courier</label>
+                  <select id={`courier-${o._id}`} name="courier" value={ship.courier} onChange={setShipField} className="field">
+                    {COURIERS.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label" htmlFor={`awb-${o._id}`}>Tracking number</label>
+                  <input id={`awb-${o._id}`} name="trackingNumber" value={ship.trackingNumber} onChange={setShipField} required maxLength={60} className="field" />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`url-${o._id}`}>Tracking link (optional)</label>
+                  <input id={`url-${o._id}`} name="trackingUrl" type="url" placeholder="https://" value={ship.trackingUrl} onChange={setShipField} maxLength={300} className="field" />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`eta-${o._id}`}>Expected delivery</label>
+                  <input id={`eta-${o._id}`} name="expectedDelivery" type="date" value={ship.expectedDelivery} onChange={setShipField} className="field" />
+                </div>
+                <div className="flex gap-2 sm:col-span-2">
+                  <button type="submit" disabled={busyId === o._id} className="btn btn-primary !px-3 !py-1.5 !text-xs">
+                    Confirm shipped
+                  </button>
+                  <button type="button" onClick={() => setShipFor(null)} className="btn btn-ghost !px-3 !py-1.5 !text-xs">
+                    Cancel
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         ))}

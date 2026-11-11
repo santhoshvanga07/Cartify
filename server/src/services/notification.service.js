@@ -10,7 +10,7 @@ const clientUrl = () => process.env.CLIENT_URL || 'http://localhost:5173';
 const rupees = (n) => `Rs ${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 const button = (href, label) =>
-  `<p style="margin:24px 0"><a href="${href}" style="background:#1f8a5b;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:14px">${esc(label)}</a></p>`;
+  `<p style="margin:24px 0"><a href="${esc(href)}" style="background:#1f8a5b;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:14px">${esc(label)}</a></p>`;
 
 export const notifyWelcome = (user, verifyUrl, hours = 24) =>
   queueEmail({
@@ -137,7 +137,9 @@ const summaryLines = (order) => {
 const orderDetailsHtml = (order) => {
   const cell = 'padding:8px 0;border-bottom:1px solid #ece9e2;vertical-align:top';
   const items = order.items.map((i) => `<tr>
-      <td style="${cell}">${esc(i.name)}<br><span style="font-size:12px;color:#8a877f">${i.quantity} &times; ${rupees(i.price)}</span></td>
+      <td style="${cell}">${esc(i.name)}<br><span style="font-size:12px;color:#8a877f">${
+        i.variant ? `${esc(i.optionName || 'Size')}: ${esc(i.variant)} &middot; ` : ''
+      }${i.quantity} &times; ${rupees(i.price)}</span></td>
       <td style="${cell};text-align:right;white-space:nowrap">${rupees(i.price * i.quantity)}</td>
     </tr>`).join('');
   const money = summaryLines(order).map(([label, value]) => `<tr>
@@ -168,7 +170,7 @@ const orderDetailsHtml = (order) => {
 const orderDetailsText = (order) =>
   [
     `Order ${order.orderNumber} (${istTime(order.createdAt)})`,
-    ...order.items.map((i) => `- ${i.name}: ${i.quantity} x ${rupees(i.price)} = ${rupees(i.price * i.quantity)}`),
+    ...order.items.map((i) => `- ${i.name}${i.variant ? ` (${i.optionName || 'Size'}: ${i.variant})` : ''}: ${i.quantity} x ${rupees(i.price)} = ${rupees(i.price * i.quantity)}`),
     ...summaryLines(order).map(([label, value]) => `${label}: ${value}`),
     `Total: ${rupees(order.pricing.total)}`,
     `Payment: ${paymentLabel(order)}`,
@@ -228,12 +230,29 @@ export const notifyStatusChange = (order, user) => {
     }.`
     : '';
   const sentence = `Hi ${user.name}, your order ${order.orderNumber} ${copy}.${reason}${refunded}`;
+
+  // Courier, tracking number and expected date, once it has shipped.
+  const s = order.status === 'shipped' ? order.shipment : null;
+  const expected = s?.expectedDelivery
+    ? new Date(s.expectedDelivery).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long' })
+    : '';
+  const shipHtml = s
+    ? `<table style="font-size:14px;border-collapse:collapse;margin-top:8px">
+        ${s.courier ? detailRow('Courier', s.courier) : ''}${s.trackingNumber ? detailRow('Tracking number', s.trackingNumber) : ''}
+        ${expected ? detailRow('Expected delivery', expected) : ''}
+      </table>${s.trackingUrl ? button(s.trackingUrl, 'Track your parcel') : ''}`
+    : '';
+  const shipText = s
+    ? [s.courier && `Courier: ${s.courier}`, s.trackingNumber && `Tracking number: ${s.trackingNumber}`,
+      expected && `Expected delivery: ${expected}`, s.trackingUrl && `Track it: ${s.trackingUrl}`].filter(Boolean).join('\n')
+    : '';
+
   queueEmail({
     to: user.email,
     subject: `Order ${order.orderNumber} ${headline}`,
     title: `Order ${headline}`,
-    html: `<p>${esc(sentence)}</p>${orderDetailsHtml(order)}${button(orderUrl(order), 'View order')}`,
-    text: `${sentence}\n\n${orderDetailsText(order)}\n\n${orderUrl(order)}`,
+    html: `<p>${esc(sentence)}</p>${shipHtml}${orderDetailsHtml(order)}${button(orderUrl(order), 'View order')}`,
+    text: `${sentence}${shipText ? `\n\n${shipText}` : ''}\n\n${orderDetailsText(order)}\n\n${orderUrl(order)}`,
   });
 };
 

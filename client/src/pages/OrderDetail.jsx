@@ -121,6 +121,30 @@ const OrderDetail = () => {
         </div>
       </div>
 
+      {/* Courier details once it has shipped */}
+      {order.shipment?.shippedAt && ['shipped', 'delivered'].includes(order.status) && (
+        <div className="mt-6 rounded-xl bg-surface px-4 py-3 text-sm">
+          <p className="text-ink">
+            {order.status === 'delivered' ? 'Delivered' : 'On its way'}
+            {order.shipment.courier && <> with {order.shipment.courier}</>}
+            {order.shipment.trackingNumber && <span className="text-body"> · Tracking {order.shipment.trackingNumber}</span>}
+          </p>
+          {order.status === 'shipped' && order.shipment.expectedDelivery && (
+            <p className="mt-1 text-body">
+              Expected by{' '}
+              {new Date(order.shipment.expectedDelivery).toLocaleDateString('en-IN', {
+                weekday: 'long', day: 'numeric', month: 'long',
+              })}
+            </p>
+          )}
+          {order.shipment.trackingUrl && /^https?:\/\//.test(order.shipment.trackingUrl) && (
+            <a href={order.shipment.trackingUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-accent hover:underline">
+              Track your parcel
+            </a>
+          )}
+        </div>
+      )}
+
       {awaitingPayment && isOwner && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-accent-soft px-4 py-3">
           <p className="text-sm text-ink">
@@ -151,13 +175,14 @@ const OrderDetail = () => {
         <h2 className="text-sm font-medium text-ink">Items</h2>
         <ul className="mt-4">
           {order.items.map((i) => (
-            <li key={i.slug} className="flex justify-between gap-4 border-b border-line py-4 text-sm">
+            <li key={`${i.slug}:${i.variant || ''}`} className="flex justify-between gap-4 border-b border-line py-4 text-sm">
               <div>
                 <p className="text-[11px] uppercase tracking-widest text-muted">{i.brand}</p>
                 <Link to={`/products/${i.slug}`} className="text-ink hover:text-accent">
                   {i.name}
                 </Link>
                 <p className="mt-0.5 text-xs text-body">
+                  {i.variant && `${i.optionName || 'Size'}: ${i.variant} · `}
                   {inr(i.price)} × {i.quantity}
                 </p>
               </div>

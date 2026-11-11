@@ -27,7 +27,8 @@ const ProductDetail = () => {
       toast.info('Please sign in to add items');
       return navigate('/login', { state: { from: { pathname: `/products/${slug}` } } });
     }
-    const result = await dispatch(addToCart({ productId: product._id, quantity: 1 }));
+    if (hasOptions && !chosen) return toast.info(`Please choose a ${optionName.toLowerCase()}`);
+    const result = await dispatch(addToCart({ productId: product._id, quantity: 1, variant: chosen || undefined }));
     if (addToCart.fulfilled.match(result)) toast.success('Added to your bag');
     else toast.error(result.payload);
   };
@@ -38,6 +39,13 @@ const ProductDetail = () => {
   // Which photo is showing. Reset to the cover whenever the product changes.
   const [photo, setPhoto] = useState({ slug, index: 0 });
   const photoIndex = photo.slug === slug ? photo.index : 0;
+
+  // The chosen size/colour, remembered per product page.
+  const [choice, setChoice] = useState({ slug, label: '' });
+  const chosen = choice.slug === slug ? choice.label : '';
+  const hasOptions = product?.variants?.length > 0;
+  const optionName = product?.optionName || 'Size';
+  const chosenStock = hasOptions && chosen ? product.variants.find((v) => v.label === chosen)?.stock ?? 0 : null;
 
   const recent = useMemo(() => getRecentlyViewed().filter((s) => s !== slug).slice(0, 4), [slug]);
 
@@ -132,12 +140,49 @@ const ProductDetail = () => {
             )}
           </div>
 
+          {hasOptions && (
+            <div className="mt-7">
+              <p className="label">
+                {optionName}
+                {chosen && <span className="text-ink">: {chosen}</span>}
+              </p>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={optionName}>
+                {product.variants.map((v) => (
+                  <button
+                    key={v.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={chosen === v.label}
+                    disabled={v.stock === 0}
+                    onClick={() => setChoice({ slug, label: v.label })}
+                    title={v.stock === 0 ? 'Sold out' : undefined}
+                    className={`min-w-12 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                      chosen === v.label
+                        ? 'border-ink bg-ink text-white'
+                        : v.stock === 0
+                        ? 'cursor-not-allowed border-line text-muted line-through'
+                        : 'border-line text-ink hover:border-ink'
+                    }`}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <p className="mt-3 text-sm text-body">
-            {product.stock > 0
-              ? product.stock <= 5
-                ? `Only ${product.stock} left`
-                : 'In stock'
-              : 'Currently unavailable'}
+            {product.stock === 0
+              ? 'Currently unavailable'
+              : chosenStock !== null
+              ? chosenStock <= 5
+                ? `Only ${chosenStock} left in ${chosen}`
+                : `${chosen} in stock`
+              : hasOptions
+              ? `Choose a ${optionName.toLowerCase()}`
+              : product.stock <= 5
+              ? `Only ${product.stock} left`
+              : 'In stock'}
           </p>
 
           <button
@@ -145,7 +190,13 @@ const ProductDetail = () => {
             disabled={product.stock === 0 || cartLoading}
             className="btn btn-primary mt-8 w-full"
           >
-            {product.stock === 0 ? 'Sold out' : cartLoading ? 'Adding…' : 'Add to bag'}
+            {product.stock === 0
+              ? 'Sold out'
+              : cartLoading
+              ? 'Adding…'
+              : hasOptions && !chosen
+              ? `Choose a ${optionName.toLowerCase()}`
+              : 'Add to bag'}
           </button>
           <div className="mt-3">
             <WishlistButton product={product} />

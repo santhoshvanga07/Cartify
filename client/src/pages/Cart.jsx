@@ -19,9 +19,9 @@ const Cart = () => {
     if (error) toast.error(error);
   }, [error]);
 
-  const changeQty = (productId, quantity) => {
+  const changeQty = (productId, variant, quantity) => {
     if (quantity < 1) return;
-    dispatch(updateCartItem({ productId, quantity }));
+    dispatch(updateCartItem({ productId, variant, quantity }));
   };
 
   if (!loading && items.length === 0) {
@@ -53,8 +53,8 @@ const Cart = () => {
       <div className="mt-10 grid gap-12 md:grid-cols-[1fr_300px]">
         {/* Line items */}
         <section>
-          {items.map(({ product, quantity, maxAvailable, lineTotal }) => (
-            <div key={product._id} className="flex gap-5 border-b border-line py-6">
+          {items.map(({ product, variant, quantity, maxAvailable, lineTotal, problem }) => (
+            <div key={`${product._id}:${variant}`} className="flex gap-5 border-b border-line py-6">
               <Link
                 to={`/products/${product.slug}`}
                 className="h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-surface"
@@ -73,13 +73,24 @@ const Cart = () => {
                 <Link to={`/products/${product.slug}`} className="text-sm text-ink hover:text-accent">
                   {product.name}
                 </Link>
+                {variant && (
+                  <p className="mt-0.5 text-xs text-body">
+                    {product.optionName || 'Size'}: <span className="text-ink">{variant}</span>
+                  </p>
+                )}
                 <p className="mt-1 text-sm text-body">{inr(product.price)} each</p>
+                {problem && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {problem}.{' '}
+                    <Link to={`/products/${product.slug}`} className="underline">Choose again</Link>
+                  </p>
+                )}
 
                 <div className="mt-3 flex items-center gap-4">
                   {/* Quantity stepper */}
                   <div className="flex items-center rounded-lg bg-page">
                     <button
-                      onClick={() => changeQty(product._id, quantity - 1)}
+                      onClick={() => changeQty(product._id, variant, quantity - 1)}
                       disabled={quantity <= 1 || loading}
                       className="px-3 py-1.5 text-body disabled:opacity-30 hover:text-ink"
                     >
@@ -87,7 +98,7 @@ const Cart = () => {
                     </button>
                     <span className="min-w-8 text-center text-sm text-ink">{quantity}</span>
                     <button
-                      onClick={() => changeQty(product._id, quantity + 1)}
+                      onClick={() => changeQty(product._id, variant, quantity + 1)}
                       disabled={quantity >= maxAvailable || loading}
                       className="px-3 py-1.5 text-body disabled:opacity-30 hover:text-ink"
                     >
@@ -96,7 +107,7 @@ const Cart = () => {
                   </div>
 
                   <button
-                    onClick={() => dispatch(removeCartItem(product._id))}
+                    onClick={() => dispatch(removeCartItem({ productId: product._id, variant }))}
                     className="text-xs text-muted underline underline-offset-4 hover:text-ink"
                   >
                     Remove

@@ -2,7 +2,7 @@ import Wishlist from '../models/Wishlist.js';
 import Product from '../models/Product.js';
 import { findOrCreateCart } from './cart.controller.js';
 
-const FIELDS = 'name slug brand price mrp stock images ratingAvg numReviews isActive';
+const FIELDS = 'name slug brand price mrp stock images ratingAvg numReviews isActive optionName variants';
 
 /** Loads the wishlist with live product data, hiding products since removed. */
 const buildWishlist = async (userId) => {
@@ -49,8 +49,18 @@ export const moveToCart = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
+  // A product with sizes/colours needs a choice - the product page asks for it.
+  if (product.variants?.length) {
+    return res.status(400).json({
+      success: false,
+      code: 'CHOOSE_VARIANT',
+      message: `Choose a ${(product.optionName || 'size').toLowerCase()} on the product page`,
+      slug: product.slug,
+    });
+  }
+
   const cart = await findOrCreateCart(req.user.id);
-  const existing = cart.items.find((i) => i.product.toString() === product._id.toString());
+  const existing = cart.items.find((i) => i.product.toString() === product._id.toString() && !i.variant);
   const wanted = (existing?.quantity ?? 0) + 1;
 
   if (wanted > product.stock) {

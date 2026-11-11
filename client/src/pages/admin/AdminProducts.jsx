@@ -32,6 +32,11 @@ const AdminProducts = () => {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [specs, setSpecs] = useState(toRows());
+  // Sizes / colours: what they are called, and one row per option with its own stock.
+  const [optionName, setOptionName] = useState('Size');
+  const [options, setOptions] = useState([]);
+  const usedOptions = options.filter((o) => String(o.label).trim());
+  const optionsTotal = usedOptions.reduce((sum, o) => sum + (Number(o.stock) || 0), 0);
   const [uploadsEnabled, setUploadsEnabled] = useState(true);
   const [loaded, setLoaded] = useState(false);
 
@@ -70,6 +75,9 @@ const AdminProducts = () => {
       price: p.price, mrp: p.mrp, category: p.category?._id || '', stock: p.stock,
     });
     setSpecs(toRows(p.attributes));
+    setOptionName(p.optionName || 'Size');
+    // stockWas: the server applies each option's change as a difference, so sales made meanwhile are kept.
+    setOptions((p.variants || []).map((v) => ({ label: v.label, stock: v.stock, stockWas: v.stock })));
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -79,6 +87,8 @@ const AdminProducts = () => {
     setEditingProduct(null);
     setForm(BLANK);
     setSpecs(toRows());
+    setOptions([]);
+    setOptionName('Size');
     setShowForm(false);
   };
 
@@ -92,10 +102,21 @@ const AdminProducts = () => {
         mrp: Number(form.mrp),
         stock: Number(form.stock),
         attributes: toAttributes(specs),
+        optionName: usedOptions.length ? optionName.trim() || 'Size' : '',
+        variants: usedOptions.map((o) => ({
+          label: String(o.label).trim(),
+          stock: Number(o.stock),
+          ...(o.stockWas !== undefined && { stockWas: o.stockWas }),
+        })),
       };
+      if (usedOptions.length) payload.stock = optionsTotal; // the server recomputes it anyway
+      if (usedOptions.some((o) => !Number.isInteger(Number(o.stock)) || Number(o.stock) < 0 || o.stock === '')) {
+        setSaving(false);
+        return toast.error('Each size/colour needs a stock of 0 or more');
+      }
       // The stock the form started from. The server applies the admin's change
       // as a difference, so sales made while the form was open are not undone.
-      if (editingId && editingProduct) payload.stockWas = editingProduct.stock;
+      if (editingId && editingProduct && !usedOptions.length) payload.stockWas = editingProduct.stock;
       if (!Number.isInteger(payload.stock) || payload.stock < 0) {
         setSaving(false);
         return toast.error('Stock must be a whole number, 0 or more');
@@ -234,7 +255,14 @@ const AdminProducts = () => {
             </div>
             <div>
               <label className="label">Stock</label>
-              <input name="stock" type="number" min="0" value={form.stock} onChange={set} required className="field" />
+              {usedOptions.length ? (
+                <>
+                  <input type="number" value={optionsTotal} disabled className="field opacity-60" aria-label="Stock (total of options)" />
+                  <p className="mt-1 text-xs text-muted">Total of the {optionName.toLowerCase() || 'option'} stock below</p>
+                </>
+              ) : (
+                <input name="stock" type="number" min="0" value={form.stock} onChange={set} required className="field" />
+              )}
             </div>
             <div className="sm:col-span-2">
               <label className="label">Description</label>
@@ -278,6 +306,60 @@ const AdminProducts = () => {
                 className="mt-2 text-xs text-accent hover:underline"
               >
                 + Add specification
+              </button>
+            </div>
+
+            {/* Sizes / colours, each with its own stock. Optional. */}
+            <div className="sm:col-span-2">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label" htmlFor="option-name">Options (optional)</label>
+                  <select id="option-name" value={optionName} onChange={(e) => setOptionName(e.target.value)} className="field">
+                    <option value="Size">Size</option>
+                    <option value="Colour">Colour</option>
+                    <option value="Storage">Storage</option>
+                    <option value="Style">Style</option>
+                  </select>
+                </div>
+                <p className="pb-2 text-xs text-muted">e.g. UK 7, UK 8, UK 9 - shoppers must pick one, and each has its own stock.</p>
+              </div>
+              <div className="mt-3 space-y-2">
+                {options.map((o, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input
+                      value={o.label}
+                      onChange={(e) => setOptions(options.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                      placeholder={optionName === 'Colour' ? 'Black' : 'UK 8'}
+                      aria-label={`${optionName} ${i + 1}`}
+                      maxLength={30}
+                      className="field"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={o.stock}
+                      onChange={(e) => setOptions(options.map((x, j) => (j === i ? { ...x, stock: e.target.value } : x)))}
+                      aria-label={`Stock for ${optionName} ${i + 1}`}
+                      placeholder="Stock"
+                      className="field max-w-28"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setOptions(options.filter((_, j) => j !== i))}
+                      aria-label={`Remove ${optionName} ${i + 1}`}
+                      className="px-2 text-sm text-muted hover:text-red-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setOptions([...options, { label: '', stock: '' }])}
+                className="mt-2 text-xs text-accent hover:underline"
+              >
+                + Add {optionName.toLowerCase()}
               </button>
             </div>
 

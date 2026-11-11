@@ -294,10 +294,11 @@ const Checkout = () => {
             <h2 className="text-sm font-medium text-ink">Your order</h2>
 
             <ul className="mt-4 space-y-2.5 text-sm">
-              {items.map(({ product, quantity, lineTotal }) => (
-                <li key={product._id} className="flex justify-between gap-3">
+              {items.map(({ product, variant, quantity, lineTotal }) => (
+                <li key={`${product._id}:${variant}`} className="flex justify-between gap-3">
                   <span className="text-body">
-                    {product.name} <span className="text-muted">× {quantity}</span>
+                    {product.name}
+                    {variant && <span className="text-muted"> ({variant})</span>} <span className="text-muted">× {quantity}</span>
                   </span>
                   <span className="shrink-0 text-ink">{inr(lineTotal)}</span>
                 </li>

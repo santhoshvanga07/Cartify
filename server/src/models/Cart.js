@@ -5,6 +5,8 @@ const cartItemSchema = new mongoose.Schema(
     // A REFERENCE, not a copy. Prices are read live from the product.
     // (Orders do the opposite - they snapshot the price. See Order.js)
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    // The chosen size/colour label, or '' for products without options.
+    variant: { type: String, default: '', maxlength: 30 },
     quantity: { type: Number, required: true, min: 1, default: 1 },
   },
   { _id: false }

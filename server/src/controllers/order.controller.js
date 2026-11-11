@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import Order, { ALLOWED_TRANSITIONS } from '../models/Order.js';
 import Cart from '../models/Cart.js';
-import Product from '../models/Product.js';
 import { calculateTotals } from '../utils/pricing.js';
 import { getSettings } from '../services/settings.service.js';
 import { logActivity } from '../services/activity.service.js';
@@ -13,12 +12,12 @@ import {
 } from '../services/notification.service.js';
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
 import { checkAddress, cleanAddress } from '../utils/address.js';
+import { takeStock, putBackStock, LOW_STOCK } from '../utils/stock.js';
 import { saveAddressFor } from './address.controller.js';
 import { emailVerificationRequired } from './auth.controller.js';
 
-/** Puts units back on the shelf, e.g. for a cancelled order or a checkout that failed halfway. */
-const restock = (lines) =>
-  Promise.all(lines.map((i) => Product.updateOne({ _id: i.product }, { $inc: { stock: i.quantity } })));
+/** Puts units back on the shelf (into the right size/colour), e.g. for a cancelled order or a checkout that failed halfway. */
+const restock = (lines) => Promise.all(lines.map((i) => putBackStock(i.product, i.variant, i.quantity)));
 
 /**
  * @route POST /api/orders
@@ -62,14 +61,24 @@ export const createOrder = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Your bag is empty' });
   }
 
+  // A size/colour that was removed (or a line saved before the product had sizes).
+  const needsChoice = lines.find((i) => i.product.checkVariant(i.variant));
+  if (needsChoice) {
+    return res.status(409).json({
+      success: false,
+      message: `${needsChoice.product.name}: ${needsChoice.product.checkVariant(needsChoice.variant)} - please update your bag`,
+    });
+  }
+
   // Re-check stock at checkout. It may have sold out since it was added.
   // This gives a friendly list of every short item; the real guarantee is the
   // conditional reservation further down.
-  const outOfStock = lines.filter((i) => i.quantity > i.product.stock);
+  const label = (i) => (i.variant ? `${i.product.name} (${i.variant})` : i.product.name);
+  const outOfStock = lines.filter((i) => i.quantity > i.product.stockFor(i.variant));
   if (outOfStock.length) {
     return res.status(409).json({
       success: false,
-      message: `Not enough stock for: ${outOfStock.map((i) => i.product.name).join(', ')}`,
+      message: `Not enough stock for: ${outOfStock.map(label).join(', ')}`,
     });
   }
 
@@ -80,6 +89,8 @@ export const createOrder = async (req, res) => {
     slug: i.product.slug,
     brand: i.product.brand,
     image: i.product.images?.[0]?.url || '',
+    variant: i.variant || '',
+    optionName: i.variant ? i.product.optionName || 'Size' : '',
     price: i.product.price,
     quantity: i.quantity,
   }));
@@ -105,21 +116,22 @@ export const createOrder = async (req, res) => {
    * check and drive stock below zero.)
    */
   const reserved = [];
+  const runningLow = [];
   for (const item of items) {
-    const result = await Product.updateOne(
-      { _id: item.product, isActive: true, stock: { $gte: item.quantity } },
-      { $inc: { stock: -item.quantity } }
-    );
-    if (result.modifiedCount !== 1) {
+    const after = await takeStock(item.product, item.variant, item.quantity);
+    if (!after) {
       // Undo what we already took, and give the coupon back.
       await restock(reserved);
       if (coupon) await releaseCoupon(coupon._id, req.user.id);
       return res.status(409).json({
         success: false,
-        message: `Sorry, ${item.name} just sold out. Please update your bag.`,
+        message: `Sorry, ${item.variant ? `${item.name} (${item.variant})` : item.name} just sold out. Please update your bag.`,
       });
     }
     reserved.push(item);
+    // Crossed the low-stock line with THIS order? Tell staff once, not on every later sale.
+    const left = after.stockFor(item.variant);
+    if (left <= LOW_STOCK && left + item.quantity > LOW_STOCK) runningLow.push({ ...item, left });
   }
 
   const pricing = calculateTotals(lineItems, { discount });
@@ -173,6 +185,15 @@ export const createOrder = async (req, res) => {
   }
 
   notifyOrderPlaced(order, req.user);
+  for (const low of runningLow) {
+    const what = low.variant ? `${low.name} (${low.variant})` : low.name;
+    notifyStaff(
+      `Low stock: ${what}`,
+      low.left === 0
+        ? `${what} has just sold out. Restock it from Dashboard > Products.`
+        : `Only ${low.left} of ${what} left after order ${order.orderNumber}. Restock it from Dashboard > Products.`
+    );
+  }
   notifyStaff(`New order ${order.orderNumber}`, `${req.user.name} placed ${order.orderNumber} for Rs ${order.pricing.total}.`);
 
   res.status(201).json({ success: true, order, razorpay });
@@ -375,7 +396,46 @@ export const listAllOrders = async (req, res) => {
   res.status(200).json({ success: true, total, page, pages: Math.ceil(total / limit), orders });
 };
 
-/** @route PATCH /api/orders/:id/status  @access Admin  body: { status, note } */
+/**
+ * Copies courier details from the request onto the order. All optional, but a
+ * tracking link must be a real http(s) address - it becomes a link in the
+ * customer's email and order page, so "javascript:..." must never get through.
+ * @returns {string|null} a problem to report, or null
+ */
+const applyShipment = (order, raw = {}) => {
+  if (raw === null || typeof raw !== 'object') raw = {};
+  const text = (v, max) => (v == null ? '' : String(v).trim().slice(0, max));
+  let trackingUrl = text(raw.trackingUrl, 300);
+  if (trackingUrl) {
+    let parsed = null;
+    try {
+      parsed = new URL(trackingUrl);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
+      return 'The tracking link must start with http:// or https://';
+    }
+    trackingUrl = parsed.href; // normalised: quotes and spaces are percent-encoded
+  }
+  let expectedDelivery = null;
+  if (raw.expectedDelivery) {
+    expectedDelivery = new Date(`${String(raw.expectedDelivery).slice(0, 10)}T18:00:00+05:30`);
+    if (Number.isNaN(expectedDelivery.getTime())) return 'Expected delivery must be a date';
+  }
+  const shippedAt = new Date();
+  order.shipment = {
+    courier: text(raw.courier, 60),
+    trackingNumber: text(raw.trackingNumber, 60),
+    trackingUrl,
+    // No date given: tell the customer the usual 5 days rather than nothing.
+    expectedDelivery: expectedDelivery || new Date(shippedAt.getTime() + 5 * 24 * 60 * 60 * 1000),
+    shippedAt,
+  };
+  return null;
+};
+
+/** @route PATCH /api/orders/:id/status  @access Admin  body: { status, note, shipment? } */
 export const updateOrderStatus = async (req, res) => {
   const { status, note } = req.body ?? {};
 
@@ -404,12 +464,25 @@ export const updateOrderStatus = async (req, res) => {
     });
   }
 
+  // Courier details are checked BEFORE the status is claimed, so a bad link changes nothing.
+  if (status === 'shipped') {
+    const problem = applyShipment(order, req.body?.shipment);
+    if (problem) return res.status(400).json({ success: false, message: problem });
+  }
+
   if (!(await claimTransition(order, from, status))) {
     return res.status(409).json({ success: false, message: 'This order was just updated - please refresh' });
   }
 
   order.status = status;
-  order.statusHistory.push({ status, note: String(note || '').slice(0, 300) || `Set to ${status} by ${req.user.name}` });
+  order.statusHistory.push({
+    status,
+    note:
+      String(note || '').slice(0, 300)
+      || (status === 'shipped' && order.shipment?.courier
+        ? `Shipped with ${order.shipment.courier}${order.shipment.trackingNumber ? ` (${order.shipment.trackingNumber})` : ''}`
+        : `Set to ${status} by ${req.user.name}`),
+  });
 
   // Declining a return moves it back to delivered - that is not a new delivery.
   if (status === 'delivered' && !order.deliveredAt) order.deliveredAt = new Date();

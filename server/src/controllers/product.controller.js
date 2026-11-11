@@ -29,7 +29,33 @@ export const getProductBySlug = async (req, res) => {
  * reviews, slug and searchText from the name - none of them may come from a
  * request body, or a rating could simply be typed in.
  */
-const EDITABLE = ['name', 'brand', 'description', 'price', 'mrp', 'category', 'stock', 'attributes', 'isActive'];
+const EDITABLE = [
+  'name', 'brand', 'description', 'price', 'mrp', 'category', 'stock', 'attributes', 'isActive', 'optionName', 'variants',
+];
+
+/**
+ * Sizes/colours from the admin form: [{ label, stock, stockWas? }].
+ * Like the product stock, an option's stock is applied as a CHANGE from the
+ * value the form started with (stockWas), so units sold while the form was
+ * open are not undone. A new option takes its stock as given.
+ */
+const mergeVariants = (current = [], incoming) => {
+  if (!Array.isArray(incoming)) return { error: 'Options must be a list' };
+  const now = new Map(current.map((v) => [v.label, v.stock]));
+  const out = [];
+  for (const v of incoming) {
+    const label = String(v?.label ?? '').trim();
+    if (!label) continue;
+    const stock = Number(v.stock);
+    if (!Number.isInteger(stock) || stock < 0) return { error: `Stock for ${label} must be a whole number, 0 or more` };
+    if (v.stockWas !== undefined && now.has(label)) {
+      out.push({ label, stock: Math.max(0, now.get(label) + (stock - Number(v.stockWas))) });
+    } else {
+      out.push({ label, stock });
+    }
+  }
+  return { variants: out };
+};
 const pick = (body = {}) => {
   const out = Object.fromEntries(EDITABLE.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
   // Spec names become keys in a MongoDB map, which may not contain "." or start
@@ -70,7 +96,13 @@ export const listProductsForAdmin = async (req, res) => {
 
 /** @route POST /api/products  @access Admin */
 export const createProduct = async (req, res) => {
-  const product = await Product.create(pick(req.body));
+  const fields = pick(req.body);
+  if (fields.variants !== undefined) {
+    const merged = mergeVariants([], fields.variants);
+    if (merged.error) return res.status(400).json({ success: false, message: merged.error });
+    fields.variants = merged.variants;
+  }
+  const product = await Product.create(fields);
   logActivity(req, 'product.create', { type: 'product', id: product._id, label: product.name });
   res.status(201).json({ success: true, product });
 };
@@ -82,6 +114,14 @@ export const updateProduct = async (req, res) => {
 
   const changes = pick(req.body);
 
+  // Options are merged against what is in the database NOW (see mergeVariants).
+  if (req.body?.variants !== undefined) {
+    const merged = mergeVariants(product.variants, req.body.variants);
+    if (merged.error) return res.status(400).json({ success: false, message: merged.error });
+    changes.variants = merged.variants;
+    delete changes.stock; // with options, the total is their sum
+  }
+
   /**
    * Stock moves while the edit form is open (sales, cancellations). The form
    * sends the stock it STARTED from as `stockWas`; we apply the admin's change
@@ -89,6 +129,8 @@ export const updateProduct = async (req, res) => {
    * write back an old stock count and un-sell or re-sell units.
    */
   let stockDelta = null;
+  const willHaveVariants = (changes.variants ?? product.variants).length > 0;
+  if (willHaveVariants) delete changes.stock;
   if (changes.stock !== undefined && req.body.stockWas !== undefined) {
     stockDelta = Number(changes.stock) - Number(req.body.stockWas);
     if (!Number.isInteger(stockDelta)) {
