@@ -1,3 +1,5 @@
+// Test accounts are made up: skip the sign-up email code (tested in _accounttest).
+process.env.REQUIRE_EMAIL_VERIFICATION ??= 'false';
 import 'dotenv/config';
 import app from './src/app.js';
 

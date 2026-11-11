@@ -3,6 +3,7 @@
 process.env.REQUIRE_EMAIL_VERIFICATION ??= 'false';
 import { startHarness, ADDRESS } from './_harness.mjs';
 import { outbox } from './src/services/email.service.js';
+import { setDnsResolver } from './src/utils/emailCheck.js';
 import Product from './src/models/Product.js';
 import User from './src/models/User.js';
 
@@ -10,6 +11,7 @@ const { call, expect, loginSuperAdmin, register, finish } = await startHarness()
 await loginSuperAdmin();
 
 const lastMailTo = (email) => [...outbox].reverse().find((m) => m.to === email);
+const mailsTo = (email) => outbox.filter((m) => m.to === email);
 const recentSubjectsTo = (email, n = 3) => outbox.filter((m) => m.to === email).slice(-n).map((m) => m.subject);
 const tick = () => new Promise((r) => setTimeout(r, 50)); // let fire-and-forget emails land
 
@@ -88,34 +90,97 @@ await User.updateOne({ email: 'kim@test.com' }, { resetPasswordExpire: new Date(
 r = await call(null, 'POST', `/api/auth/reset-password/${token2}`, { password: 'expired123' });
 expect('expired token rejected', r.status, 400);
 
-console.log('\n--- email confirmation ---');
+console.log('\n--- sign-up checks the email really exists ---');
 process.env.REQUIRE_EMAIL_VERIFICATION = 'true';
-await call('newbie', 'POST', '/api/auth/register', { name: 'New Shopper', email: 'newbie@test.com', password: 'password123' });
+process.env.EMAIL_DOMAIN_CHECK = 'true'; // on, whatever the local .env says - DNS is faked below
+// Answer DNS questions without a network: normal domains accept mail, these do not.
+setDnsResolver({
+  resolveMx: async (d) => {
+    if (d === 'no-such-domain.test') throw Object.assign(new Error('nx'), { code: 'ENOTFOUND' });
+    if (d === 'no-mail.test') return [{ exchange: '', priority: 0 }]; // "null MX"
+    if (d === 'slow-dns.test') throw Object.assign(new Error('timeout'), { code: 'ETIMEOUT' });
+    return [{ exchange: `mx.${d}`, priority: 10 }];
+  },
+  resolve4: async (d) => {
+    throw Object.assign(new Error('nx'), { code: 'ENOTFOUND' });
+  },
+});
+const signUp = (as, email) => call(as, 'POST', '/api/auth/register', { name: 'New Shopper', email, password: 'password123' });
+
+r = await signUp('t1', 'someone@gmial.com');
+expect('a typo in the domain is caught', r.status, 400, `"${r.body.message}"`);
+expect('  with a suggestion', r.body.suggestion, 'someone@gmail.com');
+r = await signUp('t2', 'someone@mailinator.com');
+expect('throwaway inboxes are refused', r.status, 400, `"${r.body.message}"`);
+r = await signUp('t3', 'someone@no-such-domain.test');
+expect('a domain that does not exist is refused', r.status, 400, `"${r.body.message}"`);
+r = await signUp('t4', 'someone@no-mail.test');
+expect('a domain that accepts no mail is refused', r.status, 400, `"${r.body.message}"`);
+r = await signUp('t5', 'kim@test.com');
+expect('an email that already has an account is refused', r.status, 409, `"${r.body.message}"`);
+r = await signUp('t6', 'someone@slow-dns.test');
+expect('a slow DNS server does not block sign-up (the code still decides)', r.status, 202);
+
+r = await signUp('newbie', 'newbie@test.com');
+expect('a good address gets a code, not an account', r.status, 202, `"${r.body.message}"`);
+expect('  no account exists yet', Boolean(await User.exists({ email: 'newbie@test.com' })), false);
+expect('  not signed in yet', (await call('newbie', 'GET', '/api/auth/me')).status, 401);
 await tick();
-const verifyLink = lastMailTo('newbie@test.com')?.text.match(/verify-email\/([a-f0-9]{64})/)?.[1];
-r = await call('newbie', 'GET', '/api/auth/me');
-expect('new account starts unconfirmed', r.body.user?.emailVerified, false);
+const codeMail = lastMailTo('newbie@test.com');
+expect('the code is emailed', /is your Cartify sign-up code$/.test(codeMail?.subject || ''), true);
+const firstCode = codeMail.text.match(/code is (\d{6})/)?.[1];
+const wrong = firstCode === '000000' ? '111111' : '000000';
+r = await call('newbie', 'POST', '/api/auth/register/verify', { email: 'newbie@test.com', code: wrong });
+expect('a wrong code is refused', r.status, 400, `"${r.body.message}"`);
+expect('  and says how many tries are left', r.body.message.includes('4 tries left'), true);
+r = await call('newbie', 'POST', '/api/auth/register/resend', { email: 'newbie@test.com' });
+expect('a new code needs a short wait', r.status, 429, `"${r.body.message}"`);
+r = await call('newbie', 'POST', '/api/auth/register/verify', { email: 'newbie@test.com', code: firstCode });
+expect('the right code creates the account', r.status, 201, `"${r.body.message}"`);
+expect('  already confirmed', r.body.user?.emailVerified, true);
+expect('  and signs them in', (await call('newbie', 'GET', '/api/auth/me')).body.user?.email, 'newbie@test.com');
+r = await call(null, 'POST', '/api/auth/register/verify', { email: 'newbie@test.com', code: firstCode });
+expect('the code cannot be used twice', r.status, 400);
+r = await call('y2', 'POST', '/api/auth/login', { email: 'newbie@test.com', password: 'password123' });
+expect('the chosen password works', r.status, 200);
+await tick();
+expect('a welcome email follows', mailsTo('newbie@test.com').some((m) => m.subject === 'Welcome to Cartify'), true);
+
 const someProduct = await Product.findOne({ stock: { $gt: 5 } });
 await call('newbie', 'POST', '/api/cart', { productId: someProduct._id, quantity: 1 });
 r = await call('newbie', 'POST', '/api/orders', { shippingAddress: ADDRESS });
-expect('cannot order before confirming', r.status, 403, `"${r.body.message}"`);
-expect('  with a code the app can act on', r.body.code, 'EMAIL_NOT_VERIFIED');
-r = await call('newbie', 'POST', '/api/auth/verify-email/resend');
-expect('can ask for a new link', r.status, 200);
+expect('a confirmed new customer can order', r.status, 201, `"${r.body.message}"`);
+
+// Five wrong codes end the attempt.
+await signUp('guess', 'guesser@test.com');
+for (let i = 0; i < 5; i++) {
+  r = await call('guess', 'POST', '/api/auth/register/verify', { email: 'guesser@test.com', code: String(100000 + i) });
+}
 await tick();
-const freshLink = lastMailTo('newbie@test.com')?.text.match(/verify-email\/([a-f0-9]{64})/)?.[1];
-r = await call(null, 'POST', `/api/auth/verify-email/${verifyLink}`);
-expect('the old link stops working once a new one is sent', r.status, 400);
+const realCode = lastMailTo('guesser@test.com').text.match(/code is (\d{6})/)[1];
+r = await call('guess', 'POST', '/api/auth/register/verify', { email: 'guesser@test.com', code: realCode });
+expect('after 5 wrong codes even the right one is refused', r.status, 400, `"${r.body.message}"`);
+
+console.log('\n--- accounts made while checking was off still need confirming ---');
+process.env.REQUIRE_EMAIL_VERIFICATION = 'false';
+await signUp('legacy', 'legacy@test.com');
+process.env.REQUIRE_EMAIL_VERIFICATION = 'true';
+await call('legacy', 'POST', '/api/cart', { productId: someProduct._id, quantity: 1 });
+r = await call('legacy', 'POST', '/api/orders', { shippingAddress: ADDRESS });
+expect('unconfirmed account cannot order', r.status, 403, `"${r.body.message}"`);
+expect('  with a code the app can act on', r.body.code, 'EMAIL_NOT_VERIFIED');
+r = await call('legacy', 'POST', '/api/auth/verify-email/resend');
+expect('can ask for a confirm link', r.status, 200);
+await tick();
+const link = lastMailTo('legacy@test.com')?.text.match(/verify-email\/([a-f0-9]{64})/)?.[1];
 r = await call(null, 'POST', '/api/auth/verify-email/deadbeef');
 expect('bogus link rejected', r.status, 400);
-r = await call(null, 'POST', `/api/auth/verify-email/${freshLink}`);
-expect('fresh link confirms the email', r.status, 200);
-r = await call(null, 'POST', `/api/auth/verify-email/${freshLink}`);
+r = await call(null, 'POST', `/api/auth/verify-email/${link}`);
+expect('the link confirms the email', r.status, 200);
+r = await call(null, 'POST', `/api/auth/verify-email/${link}`);
 expect('link is single-use', r.status, 400);
-r = await call('newbie', 'POST', '/api/orders', { shippingAddress: ADDRESS });
-expect('confirmed customer can order', r.status, 201, `"${r.body.message}"`);
-r = await call('newbie', 'POST', '/api/auth/verify-email/resend');
-expect('no new link once confirmed', r.status, 400);
+r = await call('legacy', 'POST', '/api/orders', { shippingAddress: ADDRESS });
+expect('now they can order', r.status, 201, `"${r.body.message}"`);
 const staff = await User.findOne({ email: process.env.SEED_SUPERADMIN_EMAIL });
 expect('staff accounts are confirmed automatically', staff.emailVerified, true);
 process.env.REQUIRE_EMAIL_VERIFICATION = 'false';

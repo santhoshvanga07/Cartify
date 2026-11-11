@@ -45,3 +45,10 @@ export const loginRules = [
   body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
   body('password').isString().withMessage('Password is required').notEmpty().withMessage('Password is required'),
 ];
+
+/** Sign-up step 2. The email is normalised exactly like registration, so the pending sign-up is found. */
+export const signupCodeRules = [
+  body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
+  body('code').isString().withMessage('Enter the 6-digit code').trim()
+    .matches(/^\d{6}$/).withMessage('The code is 6 digits'),
+];

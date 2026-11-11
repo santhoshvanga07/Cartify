@@ -146,7 +146,7 @@ export const updateProduct = async (req, res) => {
     const updated = await Product.findOneAndUpdate(
       { _id: product._id, stock: { $gte: -stockDelta } },
       { $inc: { stock: stockDelta } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!updated) {
       const now = (await Product.findById(product._id)).stock;

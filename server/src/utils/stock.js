@@ -20,12 +20,12 @@ export const takeStock = (productId, variant, qty) =>
     ? Product.findOneAndUpdate(
       { _id: productId, isActive: true, variants: { $elemMatch: { label: variant, stock: { $gte: qty } } } },
       { $inc: { stock: -qty, 'variants.$.stock': -qty } },
-      { new: true }
+      { returnDocument: 'after' }
     )
     : Product.findOneAndUpdate(
       { _id: productId, isActive: true, stock: { $gte: qty }, 'variants.0': { $exists: false } },
       { $inc: { stock: -qty } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
 export const putBackStock = async (productId, variant, qty) => {

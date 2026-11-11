@@ -1,8 +1,11 @@
 import User from '../models/User.js';
+import PendingSignup from '../models/PendingSignup.js';
 import crypto from 'node:crypto';
+import bcrypt from 'bcryptjs';
+import { checkEmailAddress } from '../utils/emailCheck.js';
 import sendTokenResponse, { authCookieOptions } from '../utils/sendTokenResponse.js';
 import {
-  notifyWelcome, notifyPasswordReset, notifyPasswordChanged, notifyLogin, notifyVerifyEmail,
+  notifyWelcome, notifyPasswordReset, notifyPasswordChanged, notifyLogin, notifyVerifyEmail, notifySignupCode,
 } from '../services/notification.service.js';
 import { logActivity } from '../services/activity.service.js';
 
@@ -10,6 +13,17 @@ const RESET_MINUTES = 30;
 const VERIFY_HOURS = 24;
 
 const clientUrl = () => process.env.CLIENT_URL || 'http://localhost:5173';
+
+const SIGNUP_CODE_MINUTES = 10;
+const MAX_CODE_ATTEMPTS = 5;
+const RESEND_AFTER_SECONDS = 30;
+
+/** 000000-999999, from a cryptographically secure source. */
+const newSignupCode = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+/** Stored instead of the code itself. Keyed with the server secret, so a leaked database reveals nothing. */
+const hashSignupCode = (email, code) =>
+  crypto.createHmac('sha256', process.env.JWT_SECRET).update(`${email}:${code}`).digest('hex');
+const sameHash = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 /** Orders need a confirmed email unless the operator turned that off (REQUIRE_EMAIL_VERIFICATION=false). */
 export const emailVerificationRequired = () => process.env.REQUIRE_EMAIL_VERIFICATION !== 'false';
@@ -31,9 +45,47 @@ export const register = async (req, res) => {
 
   const existing = await User.findOne({ email });
   if (existing) {
-    return res.status(409).json({ success: false, message: 'Email already registered' });
+    return res.status(409).json({
+      success: false,
+      message: 'An account with this email already exists. Sign in, or use "Forgot password".',
+    });
   }
 
+  /**
+   * With email checking on (the default), nothing is created yet. We check the
+   * address can receive mail, then email a 6-digit code; the account is made
+   * only when that code comes back (verifySignup). A made-up address never
+   * becomes an account.
+   */
+  if (emailVerificationRequired()) {
+    const check = await checkEmailAddress(email);
+    if (!check.ok) {
+      return res.status(400).json({ success: false, message: check.message, suggestion: check.suggestion });
+    }
+    const code = newSignupCode();
+    await PendingSignup.findOneAndUpdate(
+      { email },
+      {
+        email,
+        name,
+        passwordHash: await bcrypt.hash(password, 10),
+        codeHash: hashSignupCode(email, code),
+        attempts: 0,
+        sentAt: new Date(),
+        expiresAt: new Date(Date.now() + SIGNUP_CODE_MINUTES * 60 * 1000),
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
+    notifySignupCode({ name, email }, code, SIGNUP_CODE_MINUTES);
+    return res.status(202).json({
+      success: true,
+      pending: true,
+      email,
+      message: `We sent a 6-digit code to ${email}. Enter it to finish creating your account.`,
+    });
+  }
+
+  // Email checking switched off (local experiments): create the account straight away.
   // NOTE: role is deliberately NOT taken from req.body.
   const user = await User.create({ name, email, password });
   // The welcome email doubles as the confirm-your-email email.
@@ -212,4 +264,70 @@ export const resendVerification = async (req, res) => {
   }
   notifyVerifyEmail(req.user, await issueVerifyLink(req.user), VERIFY_HOURS);
   res.status(200).json({ success: true, message: `We sent a new link to ${req.user.email}` });
+};
+
+/**
+ * @desc    Finish sign-up with the emailed 6-digit code
+ * @route   POST /api/auth/register/verify   body: { email, code }
+ * @access  Public
+ */
+export const verifySignup = async (req, res) => {
+  const { email, code } = req.body;
+  const pending = await PendingSignup.findOne({ email });
+  if (!pending || pending.expiresAt < new Date()) {
+    return res.status(400).json({ success: false, message: 'This code has expired. Please sign up again to get a new one.' });
+  }
+  if (pending.attempts >= MAX_CODE_ATTEMPTS) {
+    await pending.deleteOne();
+    return res.status(400).json({ success: false, message: 'Too many wrong codes. Please sign up again.' });
+  }
+  if (!sameHash(hashSignupCode(email, String(code)), pending.codeHash)) {
+    pending.attempts += 1;
+    await pending.save();
+    const left = MAX_CODE_ATTEMPTS - pending.attempts;
+    return res.status(400).json({
+      success: false,
+      message: left > 0 ? `That code is not right. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'Too many wrong codes. Please sign up again.',
+    });
+  }
+
+  // Someone finished signing up with this email in the meantime.
+  if (await User.exists({ email })) {
+    await pending.deleteOne();
+    return res.status(409).json({ success: false, message: 'An account with this email already exists. Please sign in.' });
+  }
+
+  // NOTE: role is deliberately NOT taken from the request - a new account is always a customer.
+  const user = new User({ name: pending.name, email, password: pending.passwordHash, emailVerified: true });
+  user.$locals.passwordIsHashed = true;
+  await user.save();
+  await pending.deleteOne();
+
+  notifyWelcome(user);
+  logActivity(req, 'auth.register', { type: 'user', id: user._id, label: user.email }, 'email confirmed by code', user);
+  sendTokenResponse(user, 201, res);
+};
+
+/**
+ * @desc    Send a fresh sign-up code
+ * @route   POST /api/auth/register/resend   body: { email }
+ * @access  Public
+ */
+export const resendSignupCode = async (req, res) => {
+  const pending = await PendingSignup.findOne({ email: req.body.email });
+  if (!pending) {
+    return res.status(400).json({ success: false, message: 'Please start signing up again.' });
+  }
+  const wait = Math.ceil(RESEND_AFTER_SECONDS - (Date.now() - pending.sentAt.getTime()) / 1000);
+  if (wait > 0) {
+    return res.status(429).json({ success: false, message: `Please wait ${wait} seconds before asking for another code.` });
+  }
+  const code = newSignupCode();
+  pending.codeHash = hashSignupCode(pending.email, code);
+  pending.attempts = 0;
+  pending.sentAt = new Date();
+  pending.expiresAt = new Date(Date.now() + SIGNUP_CODE_MINUTES * 60 * 1000);
+  await pending.save();
+  notifySignupCode(pending, code, SIGNUP_CODE_MINUTES);
+  res.status(200).json({ success: true, message: `We sent a new code to ${pending.email}.` });
 };

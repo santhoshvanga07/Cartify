@@ -17,7 +17,7 @@ const sameLine = (item, productId, variant) =>
  * second would hit the unique index and the item would be lost).
  */
 export const findOrCreateCart = (userId) =>
-  Cart.findOneAndUpdate({ user: userId }, { $setOnInsert: { user: userId, items: [] } }, { upsert: true, new: true });
+  Cart.findOneAndUpdate({ user: userId }, { $setOnInsert: { user: userId, items: [] } }, { upsert: true, returnDocument: 'after' });
 
 /**
  * Loads the user's cart, drops products that were since deleted, and returns

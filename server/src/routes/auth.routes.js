@@ -2,14 +2,14 @@ import { Router } from 'express';
 
 import {
   register, login, logout, getMe, updateMe, changePassword, forgotPassword, resetPassword,
-  verifyEmail, resendVerification,
+  verifyEmail, resendVerification, verifySignup, resendSignupCode,
 } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import {
   listAddresses, addAddress, updateAddress, setDefaultAddress, deleteAddress,
 } from '../controllers/address.controller.js';
 import {
-  registerRules, loginRules, profileRules, changePasswordRules, forgotPasswordRules, resetPasswordRules,
+  registerRules, loginRules, profileRules, changePasswordRules, forgotPasswordRules, resetPasswordRules, signupCodeRules,
   runValidation,
 } from '../validators/auth.validator.js';
 import { loginLimiter, registerLimiter, passwordResetLimiter } from '../middleware/rateLimit.middleware.js';
@@ -17,6 +17,9 @@ import { loginLimiter, registerLimiter, passwordResetLimiter } from '../middlewa
 const router = Router();
 
 router.post('/register', registerLimiter, registerRules, runValidation, register);
+// Sign-up step 2: the 6-digit code from the email creates the account.
+router.post('/register/verify', loginLimiter, signupCodeRules, runValidation, verifySignup);
+router.post('/register/resend', passwordResetLimiter, forgotPasswordRules, runValidation, resendSignupCode);
 router.post('/login', loginLimiter, loginRules, runValidation, login);
 router.post('/logout', logout);
 router.get('/me', protect, getMe);

@@ -87,4 +87,6 @@ r = await call('sa', 'DELETE', `/api/products/${id}/images/${first}`);
 expect('admin removes a photo', r.body.images?.length, 4);
 expect('removed from Cloudinary too', destroyed[0], first);
 
-await finish();
+await finish();// Test accounts are made up: skip the sign-up email code (tested in _accounttest).
+process.env.REQUIRE_EMAIL_VERIFICATION ??= 'false';
+

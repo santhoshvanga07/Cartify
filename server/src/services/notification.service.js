@@ -12,8 +12,28 @@ const rupees = (n) => `Rs ${Number(n).toLocaleString('en-IN', { maximumFractionD
 const button = (href, label) =>
   `<p style="margin:24px 0"><a href="${esc(href)}" style="background:#1f8a5b;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:14px">${esc(label)}</a></p>`;
 
-export const notifyWelcome = (user, verifyUrl, hours = 24) =>
+/** The 6-digit code that finishes sign-up. No account exists yet - only this inbox can complete it. */
+export const notifySignupCode = ({ name, email }, code, minutes) =>
   queueEmail({
+    to: email,
+    subject: `${code} is your Cartify sign-up code`,
+    title: 'Confirm your email',
+    html: `<p>Hi ${esc(name)}, enter this code to finish creating your Cartify account:</p>
+      <p style="font-size:32px;letter-spacing:8px;font-weight:600;margin:20px 0">${esc(code)}</p>
+      <p style="font-size:13px;color:#6b6860">It expires in ${minutes} minutes. If you did not try to sign up, ignore this email - no account has been created.</p>`,
+    text: `Your Cartify sign-up code is ${code}. It expires in ${minutes} minutes.\nIf you did not try to sign up, ignore this email - no account has been created.`,
+  });
+
+export const notifyWelcome = (user, verifyUrl, hours = 24) =>
+  !verifyUrl
+    ? queueEmail({
+      to: user.email,
+      subject: 'Welcome to Cartify',
+      title: 'Welcome to Cartify',
+      html: `<p>Hi ${esc(user.name)}, your account is ready and your email is confirmed.</p>${button(`${clientUrl()}/products`, 'Start shopping')}`,
+      text: `Hi ${user.name}, your Cartify account is ready. ${clientUrl()}/products`,
+    })
+    : queueEmail({
     to: user.email,
     subject: 'Welcome to Cartify - please confirm your email',
     title: 'Welcome to Cartify',

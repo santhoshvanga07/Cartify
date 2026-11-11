@@ -80,6 +80,8 @@ const userSchema = new mongoose.Schema(
 userSchema.pre('save', async function () {
   // Mongoose 9: async middleware finishes by returning - there is no `next`.
   if (!this.isModified('password')) return;
+  // Already a bcrypt hash (e.g. made when the sign-up code was sent): do not hash it twice.
+  if (this.$locals.passwordIsHashed) return;
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

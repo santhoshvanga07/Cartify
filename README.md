@@ -88,13 +88,21 @@ Staff (admins) also get an alert for every new order and return request.
 When deployed, add the same five variables in your host's dashboard (on Render: the service →
 **Environment**), not in a committed file. Gmail allows roughly 500 emails a day, plenty for a demo.
 
-### Email confirmation
+### Email checking at sign-up
 
-New customers get a "Confirm my email" link in their welcome email and must click it before placing their
-first order (browsing and filling the bag work meanwhile; a banner offers a new link). Staff accounts, and
-accounts created before this feature, count as confirmed. For local experiments only, switch it off with
-`REQUIRE_EMAIL_VERIFICATION=false` in `server/.env`. Without SMTP settings the link is printed in the API
-console - copy it into the browser.
+An account is only created for an email address that really exists:
+
+1. On "Continue", the server refuses typos (`gmial.com` → "Did you mean gmail.com?"), throwaway inboxes
+   (Mailinator, YOPmail…), domains that do not exist or accept no mail (DNS MX lookup), and addresses that
+   already have an account.
+2. It emails a **6-digit code** (valid 10 minutes, 5 tries, new code after 30 s). Nothing is saved as an
+   account yet.
+3. The account is created - already confirmed - only when the right code is entered.
+
+Without SMTP settings the code is printed in the API console. Staff accounts and accounts created before this
+feature count as confirmed; an unconfirmed older account gets a banner with a confirm link and cannot order
+until it is confirmed. For local experiments only: `REQUIRE_EMAIL_VERIFICATION=false` (accounts created at
+once) or `EMAIL_DOMAIN_CHECK=false` (skip the DNS lookup where DNS is blocked).
 
 ### Deploying the web app
 
@@ -127,7 +135,7 @@ It only touches records it can identify as demo data; staff, settings and anythi
 
 | # | Module | Where |
 |---|---|---|
-| 01 | Authentication | JWT in an httpOnly cookie, register/login/logout, email confirmation before the first order, sign-in alert emails, forgot & reset password (hashed single-use tokens), change password signs out other devices |
+| 01 | Authentication | JWT in an httpOnly cookie, register with real-email check (DNS + 6-digit email code), login/logout, sign-in alert emails, forgot & reset password (hashed single-use tokens), change password signs out other devices |
 | 02 | Customer | Profile: edit name, change password, saved delivery addresses (up to 5, one default) |
 | 03 | Product | CRUD, soft delete and restore, Cloudinary images, per-category specifications, sizes/colours with their own stock |
 | 04 | Category | CRUD; refuses to delete a category still in use |

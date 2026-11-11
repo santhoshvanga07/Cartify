@@ -2,6 +2,8 @@
  * Shared set-up for the newer test scripts: a fresh database, the seeded
  * catalogue, an API server on a spare port and a cookie jar per actor.
  */
+// Test accounts are made up: skip the sign-up email code (tested in _accounttest).
+process.env.REQUIRE_EMAIL_VERIFICATION ??= 'false';
 import 'dotenv/config';
 import connectDB, { disconnectDB } from './src/config/db.js';
 import app from './src/app.js';
