@@ -38,8 +38,8 @@ const Navbar = () => {
 
   return (
     <header className="sticky top-0 z-20 print:hidden border-b border-line bg-page/80 backdrop-blur">
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-8">
+      <nav className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 sm:gap-x-8">
           <Link to="/" className="display text-2xl text-ink">
             {storeName}
           </Link>
@@ -48,7 +48,7 @@ const Navbar = () => {
           {navLink('/compare', 'Compare')}
         </div>
 
-        <div className="flex items-center gap-5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-5">
           {user ? (
             <>
               <Link to="/orders" className="text-sm text-body transition-colors hover:text-ink">
@@ -67,7 +67,7 @@ const Navbar = () => {
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-xs font-medium text-accent">
                   {user.name.charAt(0).toUpperCase()}
                 </span>
-                {user.name}
+                <span className="hidden sm:inline">{user.name}</span>
               </Link>
               {user.role !== 'customer' && (
                 <Link to="/admin" className="text-sm text-body transition-colors hover:text-ink">
