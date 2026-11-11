@@ -76,6 +76,16 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/contact', contactRoutes);
 
+// The API's own address opened in a browser: say it is up and where to look,
+// instead of a "Route not found" that reads like an error.
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Cartify API is running. This is the backend - open the Cartify website to shop.',
+    health: '/api/health',
+  });
+});
+
 /* ---------- Error handling (must be LAST) ---------- */
 
 app.use(notFound);

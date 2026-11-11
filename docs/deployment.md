@@ -286,6 +286,7 @@ First, look at the **logs**: Render → your service → **Logs** (API problems)
 
 | What you see | Most likely cause | Fix |
 |---|---|---|
+| Opening the Render address shows `"Route not found: /"` (older versions) or "Cartify API is running. This is the backend" | Nothing is wrong - that is the API, not the website | Shop at your **Vercel** address; check the API at `/api/health` |
 | Render log: `MONGO_URI is missing or invalid` / `MongoDB connection FAILED` | Connection string wrong, password still has `<db_password>`, or Network Access not set | Redo Part 1 steps 4–6; paste the corrected value into Render |
 | Render log: `bad auth : authentication failed` | Wrong database password, or it contains special characters | Atlas → Database Access → Edit user → autogenerate a new password → update `MONGO_URI` |
 | Render log: `JWT_SECRET is not set` | Variable missing | Add `JWT_SECRET` (Part 2.2) |
