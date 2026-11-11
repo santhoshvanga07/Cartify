@@ -104,7 +104,17 @@ export const listCustomers = async (req, res) => {
                 orders: { $sum: 1 },
                 spent: {
                   $sum: {
-                    $cond: [{ $in: ['$status', ['cancelled', 'returned']] }, 0, '$pricing.total'],
+                    // Same rule as COUNTS_AS_SALE: unpaid online orders are not money spent.
+                    $cond: [
+                      {
+                        $or: [
+                          { $in: ['$status', ['cancelled', 'returned']] },
+                          { $and: [{ $eq: ['$paymentMethod', 'razorpay'] }, { $ne: ['$paymentStatus', 'paid'] }] },
+                        ],
+                      },
+                      0,
+                      '$pricing.total',
+                    ],
                   },
                 },
                 lastOrderAt: { $max: '$createdAt' },

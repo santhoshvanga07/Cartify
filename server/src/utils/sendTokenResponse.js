@@ -25,12 +25,13 @@ const sendTokenResponse = (user, statusCode, res) => {
   const token = jwt.sign(
     { id: user._id, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 
   res.cookie('token', token, {
     ...authCookieOptions(),
-    maxAge: Number(process.env.COOKIE_EXPIRES_DAYS) * 24 * 60 * 60 * 1000,
+    // Defaults keep sign-in working when a host is missing these optional variables.
+    maxAge: (Number(process.env.COOKIE_EXPIRES_DAYS) || 7) * 24 * 60 * 60 * 1000,
   });
 
   res.status(statusCode).json({

@@ -1,9 +1,9 @@
-import Order from '../models/Order.js';
+import Order, { COUNTS_AS_SALE } from '../models/Order.js';
 import Product from '../models/Product.js';
 import { sendCsv } from '../utils/csv.js';
 import { logActivity } from '../services/activity.service.js';
 
-const REVENUE_MATCH = { status: { $nin: ['cancelled', 'returned'] } };
+const REVENUE_MATCH = COUNTS_AS_SALE;
 const DAY = 24 * 60 * 60 * 1000;
 
 /**
@@ -27,7 +27,8 @@ const dateRange = (req) => {
   return { from, to };
 };
 
-const stamp = (d) => d.toISOString().slice(0, 10);
+/** YYYY-MM-DD in India time (the report's own calendar), for file names. */
+const stamp = (d) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const wantsCsv = (req) => req.query.format === 'csv';
 
 /** Shared reply: JSON for the on-screen preview, CSV for the download. */

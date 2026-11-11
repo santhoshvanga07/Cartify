@@ -1,6 +1,6 @@
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
-import Order from '../models/Order.js';
+import Order, { COUNTS_AS_SALE } from '../models/Order.js';
 import Wishlist from '../models/Wishlist.js';
 import { chatJSON, sanitizeFilters, isAiConfigured } from '../services/ai.service.js';
 import { runProductQuery, VALID_SORTS } from '../services/productQuery.service.js';
@@ -54,7 +54,7 @@ Rules:
  * hallucinate stock we do not carry.
  */
 export const aiSearch = async (req, res) => {
-  const query = String(req.body.query || '').trim();
+  const query = String(req.body?.query || '').trim();
 
   if (!query) return res.status(400).json({ success: false, message: 'Tell me what you are looking for' });
   if (query.length > 300) {
@@ -85,6 +85,9 @@ export const aiSearch = async (req, res) => {
     degraded = true;
     data = { q: query };
   }
+
+  // The model may answer with JSON null or a bare value - treat that as "no filters".
+  if (!data || typeof data !== 'object') data = { q: query };
 
   // Untrusted output in, safe filter out.
   const filters = sanitizeFilters(data, {
@@ -133,9 +136,10 @@ Give two to four short pros and cons each.
  * @access Public
  */
 export const aiCompare = async (req, res) => {
-  const { slugA, slugB } = req.body;
+  const { slugA, slugB } = req.body ?? {};
 
-  if (!slugA || !slugB || slugA === slugB) {
+  // Strings only: an object like {"$ne": null} would otherwise be run as a query.
+  if (typeof slugA !== 'string' || typeof slugB !== 'string' || !slugA || !slugB || slugA === slugB) {
     return res.status(400).json({ success: false, message: 'Pick two different products' });
   }
 
@@ -218,7 +222,7 @@ export const recommendations = async (req, res) => {
  */
 
 const SHELF_FIELDS = 'name slug brand price mrp stock images ratingAvg numReviews category';
-const SOLD = { status: { $nin: ['cancelled', 'returned'] } };
+const SOLD = COUNTS_AS_SALE;
 
 /** Loads products by id in the given order, keeping only ones still for sale. */
 const productsInOrder = async (ids) => {

@@ -10,6 +10,8 @@ const reviewSchema = new mongoose.Schema(
       required: [true, 'A rating is required'],
       min: [1, 'Rating must be between 1 and 5'],
       max: [5, 'Rating must be between 1 and 5'],
+      // Whole stars only: 4.5 would count in the average but in none of the 5/4/3/2/1 bars.
+      validate: { validator: Number.isInteger, message: 'Rating must be a whole number of stars' },
     },
     title: { type: String, trim: true, maxlength: 100, default: '' },
     comment: { type: String, required: true, trim: true, maxlength: 2000 },

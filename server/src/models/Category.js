@@ -14,7 +14,7 @@ const categorySchema = new mongoose.Schema(
 
 // Keep the slug in sync with the name automatically.
 categorySchema.pre('save', function () {
-  if (this.isModified('name')) this.slug = slugify(this.name);
+  if (this.isModified('name')) this.slug = slugify(this.name) || `category-${this._id.toString().slice(-6)}`;
 });
 
 export default mongoose.model('Category', categorySchema);

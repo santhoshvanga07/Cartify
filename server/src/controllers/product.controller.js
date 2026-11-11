@@ -1,5 +1,5 @@
 import Product from '../models/Product.js';
-import { runProductQuery } from '../services/productQuery.service.js';
+import { runProductQuery, escapeRegex } from '../services/productQuery.service.js';
 import { logActivity } from '../services/activity.service.js';
 
 /**
@@ -30,7 +30,43 @@ export const getProductBySlug = async (req, res) => {
  * request body, or a rating could simply be typed in.
  */
 const EDITABLE = ['name', 'brand', 'description', 'price', 'mrp', 'category', 'stock', 'attributes', 'isActive'];
-const pick = (body) => Object.fromEntries(EDITABLE.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
+const pick = (body = {}) => {
+  const out = Object.fromEntries(EDITABLE.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
+  // Spec names become keys in a MongoDB map, which may not contain "." or start
+  // with "$". "No. of cores" would otherwise fail the whole save.
+  if (out.attributes && typeof out.attributes === 'object') {
+    out.attributes = Object.fromEntries(
+      Object.entries(out.attributes)
+        .map(([k, v]) => [String(k).replace(/\./g, '').replace(/^\$+/, '').trim(), String(v ?? '').trim()])
+        .filter(([k]) => k)
+    );
+  }
+  return out;
+};
+
+/**
+ * @route GET /api/products/admin/list?q=&status=active|removed|all&page=
+ * @access Admin
+ * The dashboard's own listing: paginated, and it includes removed products
+ * so they can be restored. The public listing hides them.
+ */
+export const listProductsForAdmin = async (req, res) => {
+  const page = Math.max(1, Math.floor(Number(req.query.page)) || 1);
+  const limit = 25;
+  const filter = {};
+  if (req.query.status === 'removed') filter.isActive = false;
+  else if (req.query.status !== 'all') filter.isActive = true;
+  const q = String(req.query.q ?? '').trim().slice(0, 100);
+  if (q) {
+    const rx = new RegExp(escapeRegex(q), 'i');
+    filter.$or = [{ name: rx }, { brand: rx }];
+  }
+  const [total, products] = await Promise.all([
+    Product.countDocuments(filter),
+    Product.find(filter).populate('category', 'name slug').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+  ]);
+  res.status(200).json({ success: true, total, page, pages: Math.ceil(total / limit), products });
+};
 
 /** @route POST /api/products  @access Admin */
 export const createProduct = async (req, res) => {
@@ -44,8 +80,42 @@ export const updateProduct = async (req, res) => {
   const product = await Product.findById(req.params.id);
   if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
 
-  Object.assign(product, pick(req.body));
+  const changes = pick(req.body);
+
+  /**
+   * Stock moves while the edit form is open (sales, cancellations). The form
+   * sends the stock it STARTED from as `stockWas`; we apply the admin's change
+   * as a difference ("+5"), so fixing a typo in the description can no longer
+   * write back an old stock count and un-sell or re-sell units.
+   */
+  let stockDelta = null;
+  if (changes.stock !== undefined && req.body.stockWas !== undefined) {
+    stockDelta = Number(changes.stock) - Number(req.body.stockWas);
+    if (!Number.isInteger(stockDelta)) {
+      return res.status(400).json({ success: false, message: 'Stock must be a whole number' });
+    }
+    delete changes.stock;
+  }
+
+  Object.assign(product, changes);
   await product.save(); // save(), not findByIdAndUpdate - so hooks and validators run
+
+  if (stockDelta) {
+    const updated = await Product.findOneAndUpdate(
+      { _id: product._id, stock: { $gte: -stockDelta } },
+      { $inc: { stock: stockDelta } },
+      { new: true }
+    );
+    if (!updated) {
+      const now = (await Product.findById(product._id)).stock;
+      return res.status(409).json({
+        success: false,
+        message: `Stock changed while you were editing - only ${now} left now. Other changes were saved; please re-check stock.`,
+      });
+    }
+    product.stock = updated.stock;
+  }
+
   logActivity(req, 'product.update', { type: 'product', id: product._id, label: product.name }, Object.keys(pick(req.body)).join(', '));
   res.status(200).json({ success: true, product });
 };

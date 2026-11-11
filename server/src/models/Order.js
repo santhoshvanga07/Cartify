@@ -24,12 +24,12 @@ const orderItemSchema = new mongoose.Schema(
 
 const addressSchema = new mongoose.Schema(
   {
-    fullName: { type: String, required: true, trim: true },
+    fullName: { type: String, required: true, trim: true, maxlength: 100 },
     phone: { type: String, required: true, trim: true },
-    line1: { type: String, required: true, trim: true },
-    line2: { type: String, trim: true, default: '' },
-    city: { type: String, required: true, trim: true },
-    state: { type: String, required: true, trim: true },
+    line1: { type: String, required: true, trim: true, maxlength: 200 },
+    line2: { type: String, trim: true, default: '', maxlength: 200 },
+    city: { type: String, required: true, trim: true, maxlength: 100 },
+    state: { type: String, required: true, trim: true, maxlength: 100 },
     pincode: { type: String, required: true, trim: true },
   },
   { _id: false }
@@ -44,6 +44,16 @@ export const ORDER_STATUSES = [
   'return_requested',
   'returned',
 ];
+
+/**
+ * Orders that count as real sales: not cancelled or returned, and - for online
+ * payment - actually paid. An abandoned Razorpay checkout is not revenue.
+ * Shared by analytics, reports, customer spend and the recommendation shelves.
+ */
+export const COUNTS_AS_SALE = {
+  status: { $nin: ['cancelled', 'returned'] },
+  $nor: [{ paymentMethod: 'razorpay', paymentStatus: { $ne: 'paid' } }],
+};
 
 /** Which transitions an admin is allowed to make. Prevents delivered -> placed. */
 export const ALLOWED_TRANSITIONS = {
@@ -93,7 +103,11 @@ const orderSchema = new mongoose.Schema(
       default: 'pending',
     },
     paymentDetails: {
-      razorpayOrderId: String,
+      razorpayOrderId: String, // the latest attempt
+      // Every attempt ("Retry payment" creates a new Razorpay order). A shopper
+      // can still complete an OLD attempt's checkout window, so all of them
+      // must be recognised - and checked for money before the order is cancelled.
+      razorpayOrderIds: { type: [String], default: [] },
       razorpayPaymentId: String,
       razorpaySignature: String,
       paidAt: Date,

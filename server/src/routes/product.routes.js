@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  listProducts, getProductBySlug, createProduct, updateProduct, deleteProduct,
+  listProducts, listProductsForAdmin, getProductBySlug, createProduct, updateProduct, deleteProduct,
 } from '../controllers/product.controller.js';
 import { protect, authorize, optionalAuth } from '../middleware/auth.middleware.js';
 import { uploadSingleImage } from '../middleware/upload.middleware.js';
@@ -12,6 +12,7 @@ const router = Router();
 const adminOnly = [protect, authorize('admin', 'superadmin')];
 
 router.get('/', listProducts);                   // public
+router.get('/admin/list', adminOnly, listProductsForAdmin); // before /:slug, or "admin" would be read as a slug
 router.get('/:slug', getProductBySlug);          // public
 
 // Reviews hang off a product. optionalAuth so guests can read them while

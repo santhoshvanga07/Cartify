@@ -17,11 +17,13 @@ export const registerRules = [
   body('name').trim().notEmpty().withMessage('Name is required')
     .isLength({ max: 50 }).withMessage('Name cannot exceed 50 characters'),
   body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('password').isString().withMessage('Password must be text')
+    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ];
 
 const newPasswordRule = (field) =>
-  body(field).isLength({ min: 8 }).withMessage('Password must be at least 8 characters');
+  body(field).isString().withMessage('Password must be text')
+    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters');
 
 export const profileRules = [
   body('name').trim().notEmpty().withMessage('Name is required')
@@ -29,7 +31,7 @@ export const profileRules = [
 ];
 
 export const changePasswordRules = [
-  body('currentPassword').notEmpty().withMessage('Enter your current password'),
+  body('currentPassword').isString().notEmpty().withMessage('Enter your current password'),
   newPasswordRule('newPassword'),
 ];
 
@@ -41,5 +43,5 @@ export const resetPasswordRules = [newPasswordRule('password')];
 
 export const loginRules = [
   body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
-  body('password').notEmpty().withMessage('Password is required'),
+  body('password').isString().withMessage('Password is required').notEmpty().withMessage('Password is required'),
 ];

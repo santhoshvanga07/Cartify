@@ -1,8 +1,17 @@
+import validator from 'validator';
 import User from '../models/User.js';
 
 /** Creates one staff account if it does not already exist. Idempotent. */
-const ensureStaffUser = async ({ name, email, password, role }) => {
-  if (!email || !password) return null;
+const ensureStaffUser = async ({ name, email: rawEmail, password, role }) => {
+  if (!rawEmail || !password) return null;
+
+  /**
+   * Store the address exactly as login will look it up. The login validator
+   * runs normalizeEmail(), which for Gmail drops dots and "+tags"
+   * (m.dheeraj@gmail.com -> mdheeraj@gmail.com). Storing the raw address
+   * would lock the account out with "Invalid credentials" forever.
+   */
+  const email = validator.normalizeEmail(String(rawEmail).trim()) || String(rawEmail).trim().toLowerCase();
 
   const existing = await User.findOne({ email });
   if (existing) return existing;

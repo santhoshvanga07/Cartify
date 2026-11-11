@@ -6,10 +6,10 @@ import { calculateTotals } from '../utils/pricing.js';
 import { getSettings } from '../services/settings.service.js';
 import { logActivity } from '../services/activity.service.js';
 import {
-  isRazorpayConfigured, startPayment, refundRazorpayPayment,
+  isRazorpayConfigured, startPayment, refundRazorpayPayment, findCapturedPayments,
 } from '../services/payment.service.js';
 import {
-  notifyOrderPlaced, notifyStatusChange, notifyStaff,
+  notifyOrderPlaced, notifyStatusChange, notifyStaff, notifyPaymentReceived,
 } from '../services/notification.service.js';
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from '../utils/coupon.js';
 
@@ -27,7 +27,8 @@ const restock = (lines) =>
  * items, at what price, totalling what - is read from the database here.
  */
 export const createOrder = async (req, res) => {
-  const { shippingAddress, paymentMethod = 'cod', couponCode } = req.body;
+  // req.body is undefined when a request arrives without a JSON body.
+  const { shippingAddress, paymentMethod = 'cod', couponCode } = req.body ?? {};
 
   if (!['cod', 'razorpay'].includes(paymentMethod)) {
     return res.status(400).json({ success: false, message: 'Invalid payment method' });
@@ -41,7 +42,8 @@ export const createOrder = async (req, res) => {
   }
 
   const required = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode'];
-  const missing = required.filter((f) => !shippingAddress?.[f]?.trim());
+  // typeof check first: a number or object here would crash .trim() with a 500.
+  const missing = required.filter((f) => typeof shippingAddress?.[f] !== 'string' || !shippingAddress[f].trim());
   if (missing.length) {
     return res.status(400).json({ success: false, message: `Missing address fields: ${missing.join(', ')}` });
   }
@@ -171,25 +173,78 @@ export const createOrder = async (req, res) => {
   res.status(201).json({ success: true, order, razorpay });
 };
 
+/** Every Razorpay order created for this order (older orders only stored the latest). */
+export const razorpayAttempts = (order) => {
+  const ids = order.paymentDetails?.razorpayOrderIds?.length
+    ? order.paymentDetails.razorpayOrderIds
+    : [order.paymentDetails?.razorpayOrderId];
+  return [...new Set(ids.filter(Boolean))];
+};
+
 /**
- * Puts stock back and settles the money for an order that is being cancelled
- * or returned. Online payments are refunded through Razorpay; if that fails
- * the order says so, so staff can refund by hand rather than it being lost.
+ * Puts stock back, returns the coupon and settles the money for an order that
+ * is being cancelled or returned. Online payments are refunded through
+ * Razorpay; if that fails the order says so, so staff can refund by hand
+ * rather than it being lost.
  */
 const releaseOrder = async (order) => {
   await restock(order.items);
 
-  if (order.paymentStatus !== 'paid') return;
+  // The order no longer happened, so the coupon use is given back.
+  if (order.coupon?.couponId) await releaseCoupon(order.coupon.couponId, order.user._id ?? order.user);
 
-  if (order.paymentMethod === 'razorpay') {
+  if (order.paymentMethod !== 'razorpay') {
+    if (order.paymentStatus === 'paid') order.paymentStatus = 'refunded'; // COD: cash handed back
+    return;
+  }
+
+  if (order.paymentStatus === 'paid') {
     const refundId = await refundRazorpayPayment(order.paymentDetails.razorpayPaymentId, order.pricing.total);
     if (!refundId) {
       order.statusHistory.push({ status: order.status, note: 'Automatic refund failed - refund manually' });
       return;
     }
     order.statusHistory.push({ status: order.status, note: `Refund issued (${refundId})` });
+    order.paymentStatus = 'refunded';
+    return;
   }
-  order.paymentStatus = 'refunded';
+
+  /**
+   * We think it is unpaid - but the shopper may have paid and lost the
+   * connection before our verify call ran. Ask Razorpay, and refund anything
+   * it actually captured, so nobody pays for a cancelled order.
+   */
+  const attempts = razorpayAttempts(order);
+  if (!attempts.length) return;
+  const captured = await findCapturedPayments(attempts);
+  if (captured === null) {
+    order.statusHistory.push({
+      status: order.status,
+      note: 'Could not confirm with Razorpay that nothing was paid - check the Razorpay dashboard',
+    });
+    return;
+  }
+  for (const paymentId of captured) {
+    const refundId = await refundRazorpayPayment(paymentId, order.pricing.total);
+    order.statusHistory.push({
+      status: order.status,
+      note: refundId
+        ? `Refund issued for unrecorded payment ${paymentId} (${refundId})`
+        : `Payment ${paymentId} was captured but the automatic refund failed - refund manually`,
+    });
+    if (refundId) order.paymentStatus = 'refunded';
+  }
+};
+
+/**
+ * Moves an order from one status to another ONLY if nobody else moved it
+ * first. Two quick "Cancel" clicks (or two admins) both pass the in-memory
+ * status check; this database-side check lets exactly one through, so stock
+ * is never restored twice and a refund is never issued twice.
+ */
+const claimTransition = async (order, from, to) => {
+  const result = await Order.updateOne({ _id: order._id, status: from }, { $set: { status: to } });
+  return result.modifiedCount === 1;
 };
 
 /** @route GET /api/orders/my  @access Private */
@@ -220,26 +275,27 @@ export const getOrder = async (req, res) => {
 
 /** @route PATCH /api/orders/:id/cancel  @access Private (own order) */
 export const cancelOrder = async (req, res) => {
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-  if (order.user.toString() !== req.user.id.toString()) {
+  if (order.user._id.toString() !== req.user.id.toString()) {
     return res.status(403).json({ success: false, message: 'Not your order' });
   }
 
   // Once it has shipped, cancelling is no longer the customer's call.
-  if (!['placed', 'confirmed'].includes(order.status)) {
+  const from = order.status;
+  if (!['placed', 'confirmed'].includes(from) || !(await claimTransition(order, from, 'cancelled'))) {
     return res.status(409).json({
       success: false,
-      message: `Cannot cancel an order that is already ${order.status}`,
+      message: `Cannot cancel an order that is already ${from === 'placed' || from === 'confirmed' ? 'being updated' : from}`,
     });
   }
 
   order.status = 'cancelled';
   order.statusHistory.push({ status: 'cancelled', note: 'Cancelled by customer' });
-  await releaseOrder(order); // stock back, refund if it was paid online
+  await releaseOrder(order); // stock and coupon back, refund if it was paid online
   await order.save();
-  notifyStatusChange(order, req.user);
+  notifyStatusChange(order, order.user);
 
   res.status(200).json({ success: true, order });
 };
@@ -252,17 +308,17 @@ export const cancelOrder = async (req, res) => {
  * restocks and refunds) or decline it (-> back to delivered).
  */
 export const requestReturn = async (req, res) => {
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-  if (order.user.toString() !== req.user.id.toString()) {
+  if (order.user._id.toString() !== req.user.id.toString()) {
     return res.status(403).json({ success: false, message: 'Not your order' });
   }
   if (order.status !== 'delivered') {
     return res.status(409).json({ success: false, message: 'Only delivered orders can be returned' });
   }
 
-  const reason = String(req.body.reason || '').trim();
+  const reason = String(req.body?.reason || '').trim();
   if (reason.length < 5) {
     return res.status(400).json({ success: false, message: 'Tell us briefly why you are returning it' });
   }
@@ -278,21 +334,25 @@ export const requestReturn = async (req, res) => {
     });
   }
 
+  if (!(await claimTransition(order, 'delivered', 'return_requested'))) {
+    return res.status(409).json({ success: false, message: 'This order was just updated - please refresh' });
+  }
   order.status = 'return_requested';
   order.returnReason = reason.slice(0, 500);
   order.statusHistory.push({ status: 'return_requested', note: `Return requested: ${order.returnReason}` });
   await order.save();
-  notifyStatusChange(order, req.user);
+  notifyStatusChange(order, order.user);
   notifyStaff(`Return requested on ${order.orderNumber}`, `${req.user.name}: ${order.returnReason}`);
 
   res.status(200).json({ success: true, order });
 };
 
-/** @route GET /api/orders?status=&user=  @access Admin */
+/** @route GET /api/orders?status=&user=&page=&limit=  @access Admin */
 export const listAllOrders = async (req, res) => {
   const { status, user } = req.query;
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(50, Number(req.query.limit) || 20);
+  const page = Math.max(1, Math.floor(Number(req.query.page)) || 1);
+  // Clamped on both sides: a negative limit would become a negative skip and a 500.
+  const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit)) || 20));
 
   const filter = {};
   if (status) filter.status = String(status);
@@ -312,7 +372,7 @@ export const listAllOrders = async (req, res) => {
 
 /** @route PATCH /api/orders/:id/status  @access Admin  body: { status, note } */
 export const updateOrderStatus = async (req, res) => {
-  const { status, note } = req.body;
+  const { status, note } = req.body ?? {};
 
   const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
@@ -328,8 +388,23 @@ export const updateOrderStatus = async (req, res) => {
     });
   }
 
+  // An online order is only worth fulfilling once the money has arrived.
+  if (
+    order.paymentMethod === 'razorpay' && order.paymentStatus !== 'paid'
+    && ['confirmed', 'shipped', 'delivered'].includes(status)
+  ) {
+    return res.status(409).json({
+      success: false,
+      message: 'This order has not been paid online yet - it can only be cancelled',
+    });
+  }
+
+  if (!(await claimTransition(order, from, status))) {
+    return res.status(409).json({ success: false, message: 'This order was just updated - please refresh' });
+  }
+
   order.status = status;
-  order.statusHistory.push({ status, note: note || `Set to ${status} by ${req.user.name}` });
+  order.statusHistory.push({ status, note: String(note || '').slice(0, 300) || `Set to ${status} by ${req.user.name}` });
 
   // Declining a return moves it back to delivered - that is not a new delivery.
   if (status === 'delivered' && !order.deliveredAt) order.deliveredAt = new Date();
@@ -346,4 +421,54 @@ export const updateOrderStatus = async (req, res) => {
   logActivity(req, 'order.status', { type: 'order', id: order._id, label: order.orderNumber }, `${from} -> ${status}`);
   if (order.user) notifyStatusChange(order, order.user);
   res.status(200).json({ success: true, order });
+};
+
+/**
+ * Cancels online orders nobody paid for, so their stock goes back on sale.
+ * Runs every few minutes from server.js.
+ *
+ * Before cancelling, Razorpay is asked whether money DID arrive (the shopper
+ * may have paid and then lost the connection). If it did, the order is
+ * recorded as paid instead. If Razorpay cannot be reached, the order is left
+ * alone and checked again next time - never cancelled on a guess.
+ */
+export const expireUnpaidOrders = async (maxAgeMinutes = 30) => {
+  const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
+  const stale = await Order.find({
+    paymentMethod: 'razorpay',
+    paymentStatus: { $in: ['pending', 'failed'] },
+    status: 'placed',
+    createdAt: { $lt: cutoff },
+  })
+    .populate('user', 'name email')
+    .limit(50);
+
+  let cancelled = 0;
+  for (const order of stale) {
+    const attempts = razorpayAttempts(order);
+    const captured = attempts.length ? await findCapturedPayments(attempts) : [];
+    if (captured === null) continue;
+
+    if (captured.length) {
+      order.paymentStatus = 'paid';
+      order.paymentDetails.razorpayPaymentId = captured[0];
+      order.paymentDetails.paidAt = new Date();
+      order.statusHistory.push({ status: order.status, note: `Paid online (${captured[0]}) - confirmed with Razorpay` });
+      await order.save();
+      if (order.user) notifyPaymentReceived(order, order.user);
+      continue;
+    }
+
+    if (!(await claimTransition(order, 'placed', 'cancelled'))) continue;
+    order.status = 'cancelled';
+    order.statusHistory.push({
+      status: 'cancelled',
+      note: `Cancelled automatically - payment was not completed within ${maxAgeMinutes} minutes`,
+    });
+    await releaseOrder(order);
+    await order.save();
+    if (order.user) notifyStatusChange(order, order.user);
+    cancelled++;
+  }
+  return cancelled;
 };

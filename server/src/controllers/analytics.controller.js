@@ -1,4 +1,4 @@
-import Order from '../models/Order.js';
+import Order, { COUNTS_AS_SALE } from '../models/Order.js';
 import User from '../models/User.js';
 import Product from '../models/Product.js';
 
@@ -7,7 +7,9 @@ import Product from '../models/Product.js';
  * excluded from every revenue figure - counting them would inflate sales
  * with money that was never kept.
  */
-const REVENUE_MATCH = { status: { $nin: ['cancelled', 'returned'] } };
+const REVENUE_MATCH = COUNTS_AS_SALE;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 /**
  * @route GET /api/analytics/overview
@@ -66,7 +68,9 @@ export const overview = async (req, res) => {
  */
 export const salesOverTime = async (req, res) => {
   const days = Math.min(365, Math.max(7, Number(req.query.days) || 30));
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // Start at midnight India time, the same calendar the daily sales report uses.
+  const todayIST = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+  const since = new Date(new Date(`${todayIST}T00:00:00.000+05:30`).getTime() - (days - 1) * DAY_MS);
 
   const rows = await Order.aggregate([
     { $match: { ...REVENUE_MATCH, createdAt: { $gte: since } } },
@@ -74,18 +78,25 @@ export const salesOverTime = async (req, res) => {
       $group: {
         // Group by calendar day. Without $dateToString every order would be
         // its own bucket, because timestamps differ by milliseconds.
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Kolkata' } },
         revenue: { $sum: '$pricing.total' },
         orders: { $sum: 1 },
       },
     },
     { $sort: { _id: 1 } },
   ]);
+  const byDay = new Map(rows.map((r) => [r._id, r]));
 
   res.status(200).json({
     success: true,
     days,
-    series: rows.map((r) => ({ date: r._id, revenue: Math.round(r.revenue), orders: r.orders })),
+    // Every day appears, including days with no sales - a chart that skips
+    // empty days draws a misleading straight line across them.
+    series: Array.from({ length: days }, (_, i) => {
+      const date = new Date(since.getTime() + i * DAY_MS + IST_OFFSET_MS).toISOString().slice(0, 10);
+      const r = byDay.get(date);
+      return { date, revenue: r ? Math.round(r.revenue) : 0, orders: r ? r.orders : 0 };
+    }),
   });
 };
 
@@ -171,16 +182,24 @@ export const customerGrowth = async (req, res) => {
     { $match: { role: 'customer' } },
     {
       $group: {
-        _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+        _id: { $dateToString: { format: '%Y-%m', date: '$createdAt', timezone: 'Asia/Kolkata' } },
         customers: { $sum: 1 },
       },
     },
-    { $sort: { _id: 1 } },
+    // The LATEST 12 months: newest first, take 12, then put back in order.
+    { $sort: { _id: -1 } },
     { $limit: 12 },
   ]);
+  rows.reverse();
 
   // A running total reads better on a growth chart than isolated monthly bars.
-  let running = 0;
+  // It starts from everyone who joined before the first month shown.
+  let running = rows.length
+    ? await User.countDocuments({
+      role: 'customer',
+      createdAt: { $lt: new Date(`${rows[0]._id}-01T00:00:00.000+05:30`) },
+    })
+    : 0;
   const series = rows.map((r) => {
     running += r.customers;
     return { month: r._id, newCustomers: r.customers, total: running };

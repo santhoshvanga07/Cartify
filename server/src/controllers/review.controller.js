@@ -27,6 +27,12 @@ export const listReviews = async (req, res) => {
     .populate('user', 'name')
     .sort(sort);
 
+  // Your own review, even if moderators hid it - otherwise you could neither
+  // see nor edit it, and "write a review" would fail with "already reviewed".
+  const myHidden = req.user
+    ? await Review.findOne({ product: product._id, user: req.user._id, isApproved: false }).populate('user', 'name')
+    : null;
+
   // Rating distribution for the 5/4/3/2/1 bars.
   const breakdown = [5, 4, 3, 2, 1].map((star) => ({
     star,
@@ -39,7 +45,7 @@ export const listReviews = async (req, res) => {
     ratingAvg: product.ratingAvg,
     breakdown,
     // Hide reporter identities from the public payload; send only what the UI needs.
-    reviews: reviews.map((r) => ({
+    reviews: [...(myHidden ? [myHidden] : []), ...reviews].map((r) => ({
       _id: r._id,
       user: r.user,
       rating: r.rating,
@@ -50,6 +56,7 @@ export const listReviews = async (req, res) => {
       helpfulCount: r.helpfulVotes.length,
       votedByMe: req.user ? r.helpfulVotes.some((id) => id.equals(req.user._id)) : false,
       isMine: req.user ? r.user._id.equals(req.user._id) : false,
+      isHidden: !r.isApproved,
       createdAt: r.createdAt,
     })),
   });
@@ -60,7 +67,7 @@ export const listReviews = async (req, res) => {
  * @access Private
  */
 export const createReview = async (req, res) => {
-  const { rating, title, comment } = req.body;
+  const { rating, title, comment } = req.body ?? {};
 
   const product = await Product.findOne({ slug: req.params.slug, isActive: true });
   if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
@@ -99,10 +106,12 @@ export const updateReview = async (req, res) => {
     return res.status(403).json({ success: false, message: 'You can only edit your own review' });
   }
 
-  const { rating, title, comment } = req.body;
+  const { rating, title, comment } = req.body ?? {};
   if (rating != null) review.rating = rating;
   if (title != null) review.title = title;
   if (comment != null) review.comment = comment;
+  // Re-check the badge: the order may have been delivered (or returned) since.
+  review.isVerifiedPurchase = await hasPurchased(req.user.id, review.product);
 
   await review.save();
   await Review.recalculateProductRating(review.product);
@@ -190,7 +199,10 @@ export const listReportedReviews = async (req, res) => {
   const reviews = await Review.find({ 'reports.0': { $exists: true } })
     .populate('user', 'name email')
     .populate('product', 'name slug')
-    .sort({ 'reports.length': -1, updatedAt: -1 });
+    .sort({ updatedAt: -1 });
+  // Most-reported first. MongoDB cannot sort on an array's length directly
+  // ('reports.length' is not a field), and the queue is small, so sort here.
+  reviews.sort((a, b) => b.reports.length - a.reports.length);
 
   res.status(200).json({ success: true, count: reviews.length, reviews });
 };

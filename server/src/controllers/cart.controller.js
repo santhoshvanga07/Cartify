@@ -6,6 +6,14 @@ import { calculateTotals } from '../utils/pricing.js';
  * Loads the user's cart, drops any products that were since deleted,
  * and returns it together with server-calculated totals.
  */
+/**
+ * The user's cart, created if they have none. One atomic upsert: two quick
+ * "Add to bag" clicks from a brand-new user must not both create a cart (the
+ * second would hit the unique index and the item would be lost).
+ */
+export const findOrCreateCart = (userId) =>
+  Cart.findOneAndUpdate({ user: userId }, { $setOnInsert: { user: userId, items: [] } }, { upsert: true, new: true });
+
 const buildCartResponse = async (userId) => {
   const cart = await Cart.findOne({ user: userId }).populate(
     'items.product',
@@ -39,7 +47,8 @@ export const getCart = async (req, res) => {
 
 /** @route POST /api/cart  @access Private  body: { productId, quantity } */
 export const addToCart = async (req, res) => {
-  const { productId, quantity = 1 } = req.body;
+  const { quantity = 1 } = req.body ?? {};
+  const productId = String(req.body?.productId ?? '');
   const qty = Number(quantity);
 
   if (!Number.isInteger(qty) || qty < 1) {
@@ -51,7 +60,7 @@ export const addToCart = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
-  const cart = (await Cart.findOne({ user: req.user.id })) || new Cart({ user: req.user.id, items: [] });
+  const cart = await findOrCreateCart(req.user.id);
   const existing = cart.items.find((i) => i.product.toString() === productId);
   const wanted = existing ? existing.quantity + qty : qty;
 
@@ -75,7 +84,7 @@ export const addToCart = async (req, res) => {
 
 /** @route PATCH /api/cart/:productId  @access Private  body: { quantity } */
 export const updateCartItem = async (req, res) => {
-  const qty = Number(req.body.quantity);
+  const qty = Number(req.body?.quantity);
 
   if (!Number.isInteger(qty) || qty < 1) {
     return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
@@ -88,7 +97,12 @@ export const updateCartItem = async (req, res) => {
   if (!item) return res.status(404).json({ success: false, message: 'Item not in cart' });
 
   const product = await Product.findById(req.params.productId);
-  if (qty > product.stock) {
+  if (!product || !product.isActive) {
+    return res.status(404).json({ success: false, message: 'This product is no longer available - remove it from your bag' });
+  }
+  // Lowering the quantity is always allowed: if stock fell below what is in the
+  // bag, the shopper must be able to step DOWN to it, not be stuck.
+  if (qty > product.stock && qty > item.quantity) {
     return res.status(409).json({ success: false, message: `Only ${product.stock} in stock` });
   }
 

@@ -1,6 +1,6 @@
 import Wishlist from '../models/Wishlist.js';
 import Product from '../models/Product.js';
-import Cart from '../models/Cart.js';
+import { findOrCreateCart } from './cart.controller.js';
 
 const FIELDS = 'name slug brand price mrp stock images ratingAvg numReviews isActive';
 
@@ -49,7 +49,7 @@ export const moveToCart = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
-  const cart = (await Cart.findOne({ user: req.user.id })) || new Cart({ user: req.user.id, items: [] });
+  const cart = await findOrCreateCart(req.user.id);
   const existing = cart.items.find((i) => i.product.toString() === product._id.toString());
   const wanted = (existing?.quantity ?? 0) + 1;
 

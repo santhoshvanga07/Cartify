@@ -29,10 +29,17 @@ export const updateSettings = async (req, res) => {
   const doc = await Setting.findOne({ key: 'platform' });
   const before = doc.toObject();
 
-  for (const k of EDITABLE) if (req.body[k] !== undefined) doc[k] = req.body[k];
+  for (const k of EDITABLE) if (req.body?.[k] !== undefined) doc[k] = req.body[k];
 
-  if (!doc.codEnabled && !doc.onlinePaymentEnabled) {
-    return res.status(400).json({ success: false, message: 'At least one payment method must stay enabled' });
+  // "Online" only counts if Razorpay keys exist - otherwise turning off COD
+  // would leave shoppers with no way to pay at all.
+  if (!doc.codEnabled && !(doc.onlinePaymentEnabled && isRazorpayConfigured())) {
+    return res.status(400).json({
+      success: false,
+      message: isRazorpayConfigured()
+        ? 'At least one payment method must stay enabled'
+        : 'Cash on delivery must stay on until Razorpay keys are configured',
+    });
   }
 
   doc.updatedBy = req.user._id;

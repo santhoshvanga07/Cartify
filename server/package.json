@@ -23,7 +23,8 @@
     "test:admin-tools": "node _admintoolstest.mjs",
     "test:reco": "node _recotest.mjs",
     "test:images": "node _imagetest.mjs",
-    "test:purge": "node _purgetest.mjs"
+    "test:purge": "node _purgetest.mjs",
+    "test:fixes": "node _fixestest.mjs"
   },
   "keywords": [
     "ecommerce",
@@ -44,7 +45,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.3",
     "multer": "^2.3.0",
-    "nodemailer": "^10.5.0"
+    "nodemailer": "^10.5.0",
+    "validator": "^13.15.35"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.2.0",

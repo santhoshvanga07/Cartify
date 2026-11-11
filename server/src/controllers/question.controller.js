@@ -83,6 +83,12 @@ export const answerQuestion = async (req, res) => {
   const q = await loadQuestion(req, res);
   if (!q) return;
 
+  // One person cannot fill a question's 50 answer slots and lock everyone else out.
+  const mine = q.answers.filter((a) => a.user.equals(req.user._id)).length;
+  if (mine >= 3) {
+    return res.status(409).json({ success: false, message: 'You have already answered this question 3 times' });
+  }
+
   const isVerifiedBuyer = Boolean(
     await Order.exists({ user: req.user.id, status: 'delivered', 'items.product': q.product })
   );
@@ -147,6 +153,11 @@ export const deleteQuestion = async (req, res) => {
   if (!q) return res.status(404).json({ success: false, message: 'Question not found' });
   if (!q.user.equals(req.user._id) && !isStaff(req.user)) {
     return res.status(403).json({ success: false, message: 'Not your question' });
+  }
+  // A question hidden by reports is kept for moderators to review; its author
+  // cannot quietly delete the evidence.
+  if (q.isHidden && !isStaff(req.user)) {
+    return res.status(409).json({ success: false, message: 'This question is under review and cannot be deleted' });
   }
   await q.deleteOne();
   if (!q.user.equals(req.user._id)) logActivity(req, 'question.delete', { type: 'question', id: q._id, label: q.text.slice(0, 60) });

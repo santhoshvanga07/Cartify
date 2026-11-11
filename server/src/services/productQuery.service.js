@@ -33,6 +33,10 @@ export const buildProductFilter = async ({
 } = {}) => {
   const filter = { isActive: true };
 
+  // ?q=a&q=b arrives as an array; use the first one rather than crash on .trim().
+  if (Array.isArray(q)) q = q[0];
+  if (q != null) q = String(q);
+
   if (q) {
     /**
      * Split into words and require EVERY word to appear in searchText,
@@ -71,7 +75,8 @@ export const buildProductFilter = async ({
   }
 
   if (minRating != null) filter.ratingAvg = { $gte: Number(minRating) };
-  if (inStockOnly) filter.stock = { $gt: 0 };
+  // Query strings arrive as text: "false" must not count as switched on.
+  if (inStockOnly === true || inStockOnly === 'true' || inStockOnly === '1') filter.stock = { $gt: 0 };
 
   return filter;
 };

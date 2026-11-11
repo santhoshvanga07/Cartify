@@ -15,9 +15,13 @@ import { categories as demoCategories, products as demoProducts } from '../tests
  * development - and ONLY that. Everything is matched on something the
  * seeders used and real data cannot plausibly share:
  *
- *  - products whose name is one of the 24 demo catalogue names
+ *  - products matching a demo catalogue row on name AND brand AND the exact
+ *    description the seeder wrote ("<name> by <brand>. <specs>.") - so a real
+ *    "iPhone 15" an admin added by hand is never mistaken for demo data
  *  - customers with an @example.com address (the demo shoppers)
- *  - orders, reviews and questions that belong to either of those
+ *  - orders placed BY those demo customers (a real customer's order is never
+ *    deleted, even if it contains a demo product - it keeps its own snapshot)
+ *  - reviews and questions by demo customers or on demo products
  *  - the WELCOME10 and FLAT500 sample coupons
  *  - demo categories, but only once no other product uses them
  *  - Cloudinary images attached to demo products
@@ -28,15 +32,21 @@ import { categories as demoCategories, products as demoProducts } from '../tests
  * @param {{ apply?: boolean, log?: Function }} options  apply=false is a dry run
  */
 const purgeDemoData = async ({ apply = false, log = console.log } = {}) => {
-  const productNames = demoProducts.map((row) => row[0]);
+  const escape = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const categoryNames = demoCategories.map((c) => c.name);
 
-  const products = await Product.find({ name: { $in: productNames } }).select('_id name images');
+  const products = await Product.find({
+    $or: demoProducts.map(([name, brand]) => ({
+      name,
+      brand,
+      description: new RegExp(`^${escape(`${name} by ${brand}. `)}`),
+    })),
+  }).select('_id name images');
   const productIds = products.map((p) => p._id);
   const users = await User.find({ role: 'customer', email: /@example\.com$/i }).select('_id');
   const userIds = users.map((u) => u._id);
 
-  const orderFilter = { $or: [{ user: { $in: userIds } }, { 'items.product': { $in: productIds } }] };
+  const orderFilter = { user: { $in: userIds } };
   const reviewFilter = { $or: [{ user: { $in: userIds } }, { product: { $in: productIds } }] };
   const questionFilter = { $or: [{ user: { $in: userIds } }, { product: { $in: productIds } }] };
   const couponFilter = { code: { $in: ['WELCOME10', 'FLAT500'] } };
@@ -65,6 +75,7 @@ const purgeDemoData = async ({ apply = false, log = console.log } = {}) => {
 
   log(apply ? 'Removing demo data:' : 'DRY RUN - this would remove:');
   for (const [k, v] of Object.entries(counts)) log(`  ${k.padEnd(17)} ${v}`);
+  if (products.length) log(`  demo products: ${products.map((p) => p.name).join(', ')}`);
   if (keptCats.length) log(`  (keeping categories still used by your products: ${keptCats.map((c) => c.name).join(', ')})`);
 
   if (!apply) {

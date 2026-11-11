@@ -10,6 +10,9 @@ import crypto from 'node:crypto';
 
 const API = 'https://api.razorpay.com/v1';
 
+const authHeader = () =>
+  `Basic ${Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`;
+
 export const isRazorpayConfigured = () =>
   Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
 
@@ -21,13 +24,10 @@ export const toPaise = (rupees) => Math.round(rupees * 100);
  * THIS order - so the amount can never be chosen by the client.
  */
 export const createRazorpayOrder = async ({ amount, receipt, notes }) => {
-  const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString(
-    'base64'
-  );
 
   const res = await fetch(`${API}/orders`, {
     method: 'POST',
-    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: authHeader(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ amount: toPaise(amount), currency: 'INR', receipt, notes }),
     signal: AbortSignal.timeout(15000),
   });
@@ -49,6 +49,7 @@ export const startPayment = async (order) => {
     notes: { cartifyOrderId: String(order._id) },
   });
   order.paymentDetails.razorpayOrderId = rzp.id;
+  order.paymentDetails.razorpayOrderIds.push(rzp.id);
   await order.save();
   return { orderId: rzp.id, amount: rzp.amount, currency: rzp.currency, keyId: process.env.RAZORPAY_KEY_ID };
 };
@@ -81,13 +82,10 @@ export const verifyRazorpaySignature = ({ orderId, paymentId, signature }) => {
  */
 export const refundRazorpayPayment = async (paymentId, amount) => {
   if (!isRazorpayConfigured() || !paymentId) return null;
-  const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString(
-    'base64'
-  );
   try {
     const res = await fetch(`${API}/payments/${encodeURIComponent(paymentId)}/refund`, {
       method: 'POST',
-      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: authHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: toPaise(amount) }),
       signal: AbortSignal.timeout(15000),
     });
@@ -96,6 +94,36 @@ export const refundRazorpayPayment = async (paymentId, amount) => {
     return data.id;
   } catch (err) {
     console.error(`Razorpay refund failed for ${paymentId}: ${err.message}`);
+    return null;
+  }
+};
+
+/**
+ * Money Razorpay actually CAPTURED for an order, across every payment attempt.
+ *
+ * Used before cancelling an order we believe is unpaid: the shopper may have
+ * paid and then lost the connection before our verify call ran. Without this
+ * check that money would be kept for a cancelled order.
+ *
+ * @returns {Promise<string[]|null>} captured payment ids, or null when Razorpay
+ *          could not be asked (the caller must then NOT assume "unpaid").
+ */
+export const findCapturedPayments = async (razorpayOrderIds = []) => {
+  if (!isRazorpayConfigured()) return null;
+  const captured = [];
+  try {
+    for (const id of new Set(razorpayOrderIds)) {
+      const res = await fetch(`${API}/orders/${encodeURIComponent(id)}/payments`, {
+        headers: { Authorization: authHeader() },
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error?.description || `HTTP ${res.status}`);
+      for (const p of data.items || []) if (p.status === 'captured') captured.push(p.id);
+    }
+    return captured;
+  } catch (err) {
+    console.error(`Could not list Razorpay payments: ${err.message}`);
     return null;
   }
 };
