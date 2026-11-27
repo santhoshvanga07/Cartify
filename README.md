@@ -1,7 +1,7 @@
 # Cartify
 
 Full-stack, AI-assisted e-commerce web application — Software Engineering Lab project by **Team Cartify**
-(M. Dheeraj, S. Pavan Teja, V. Chakradhar).
+(V. Santhosh Vardhan Reddy, V. Vignesh, N. Nithin).
 
 MERN stack: React 19 + Vite + Tailwind + Redux Toolkit on the front, Node + Express 5 + MongoDB (Mongoose) on
 the back. Groq LLM for AI features, Razorpay for payments, Cloudinary for images, Nodemailer for email.
